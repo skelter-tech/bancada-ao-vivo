@@ -1,0 +1,5 @@
+.env
+.env.*
+.chave-firebase*.json
+aovivo/saida/
+node_modules/

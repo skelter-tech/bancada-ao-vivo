@@ -1,0 +1,43 @@
+name: Turno da bancada
+
+on:
+  schedule:
+    # um turno por hora, no minuto 17; cada turno trabalha 52 minutos
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: turno
+  cancel-in-progress: false
+
+jobs:
+  turno:
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Trabalhar
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          FIREBASE_CONTA: ${{ secrets.FIREBASE_CONTA }}
+          DURACAO_MIN: '52'
+        run: |
+          # sem o Firestore o trabalho não aparece em lugar nenhum: não gasta cota à toa
+          if [ -z "$FIREBASE_CONTA" ]; then echo "FIREBASE_CONTA ausente, turno não roda"; exit 0; fi
+          node aovivo/motor.mjs
+      # O GitHub desliga agenda de repositório público sem atividade por 60 dias.
+      # No dia 1 de cada mês o turno da madrugada deixa um sinal de vida.
+      - name: Sinal de vida
+        if: always()
+        run: |
+          if [ "$(date -u +%d%H)" = "0103" ]; then
+            date -u > .vivo
+            git config user.name "Bancada" && git config user.email "bancada@users.noreply.github.com"
+            git add .vivo && git commit -m "sinal de vida" && git push || true
+          fi
