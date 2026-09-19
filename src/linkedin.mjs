@@ -14,8 +14,15 @@ export function paraLinkedin(doc, fontes) {
     .replace(/([^\n])\n(?=• )/g, '$1\n\n')
     .replace(/(• [^\n]+)\n\n(?=• )/g, '$1\n')
     .replace(/(• [^\n]+)\n(?=[^•\n])/g, '$1\n\n')
+    // a linha de hashtags fica separada do fecho
+    .replace(/([^\n])\n(?=#[\p{L}\p{N}_]+(?:\s+#[\p{L}\p{N}_]+)*\s*$)/u, '$1\n\n')
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
     .replace(/ +([.,;:])/g, '$1')
+    // tipografia: em português é "90%", e o hífen inseparável (U+2011) que o modelo
+    // gosta de usar quebra a busca do LinkedIn e às vezes vira quadradinho
+    .replace(/(\d)[   ]+%/g, '$1%')
+    .replace(/[‐‑]/g, '-')
+    .replace(/[  ]/g, ' ')
     .trim();
   return { post, usadas };
 }

@@ -54,7 +54,15 @@ O que você entrega é um post, não um artigo. Quem vai ler está rolando o fee
   "você sabia".
 - **Parágrafos de uma a três frases**, com linha em branco entre eles.
 - **Uma lista curta** (3 a 5 itens começando com "- ") com o que muda para quem
-  trabalha, nomeando setor ou função.
+  trabalha, nomeando setor ou função. Cada item sai de um fato das fontes, com o
+  código dele: "- Compras: perdas de R$ 36,5 bi no varejo em 2024 [f2] viram
+  argumento para investir em previsão". Item genérico, que serviria para qualquer
+  tema ("analistas ganham previsões mais estáveis"), não entra.
+- **Escreva para gestor, não para cientista de dados.** Nome de métrica técnica
+  (RMSE, F1, "Forecast Stability Score", "sementes") não vai para o post: traduza
+  o que ela mediu ("as previsões variaram menos de uma rodada para outra").
+- **Quando o dado mais forte é de um estudo de empresa**, dê o autor: "segundo
+  relatório da KPMG, 90% ... [f1]". Número sem autor perde peso.
 - **Uma frase honesta** sobre o que ainda não se sabe.
 - **Fecho** com uma pergunta concreta para a conversa nos comentários.
 - **Na última linha**, 3 a 5 hashtags em português ou inglês, sem acento.

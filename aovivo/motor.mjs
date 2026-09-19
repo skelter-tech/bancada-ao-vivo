@@ -8,8 +8,9 @@
 // O motor espera a escrita terminar antes do passo seguinte: é isso que faz o
 // ritmo ser de gente trabalhando, e não de máquina despejando texto.
 //
-// A bancada só para em três casos: a cota gratuita do dia acabou, o Diretor está
-// montando a pauta do dia (madrugada), ou o administrador pediu algo para hoje.
+// A bancada pública trabalha das 7h à meia-noite. De madrugada ela descansa, o
+// Diretor monta a pauta do dia e os pedidos do administrador são atendidos. Fora
+// disso, só para quando a cota gratuita acaba ou num pedido "para hoje".
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gerar, liberaCotas } from '../src/llm.mjs';
@@ -25,7 +26,6 @@ const RAIZ = join(import.meta.dirname, '..');
 // data e hora em São Paulo, sem importar o publicar.mjs, que arrastaria o comitê
 // junto para o repositório público do motor
 const hoje = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-const horaSP = () => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }).format(new Date())) % 24;
 for (const l of (await readFile(join(RAIZ, '.env'), 'utf8').catch(() => '')).split(/\r?\n/)) {
   const m = l.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)\s*$/);
   if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["'](.*)["']$/, '$1').trim();
@@ -383,12 +383,31 @@ async function montaDocumento({ tema, area, doc: bruto, fontes, imagem, pedido }
   return pronto;
 }
 
-/* ---------- pedidos do administrador ---------- */
-function madrugada() { const h = horaSP(); return h >= 1 && h < 5; }
+/* ---------- o expediente do dia (horário de São Paulo) ----------
+   Pedido do Rubens em 19/09:
+     00h às 05h  folga: a bancada pública para
+     05h às 06h  o Diretor monta a pauta do dia (comitê, no repositório privado)
+     06h às 07h  pedidos "pode esperar" do administrador; se não der tempo, tudo bem
+     07h         volta o ao vivo, em ponto
+   Pedido "para hoje" roda a qualquer hora: é urgente por definição.
+   Documento público novo não começa depois das 23h40, para a bancada não entrar
+   na folga no meio de um texto. */
+const minutoSP = () => { const [h, m] = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()).split(':').map(Number); return (h % 24) * 60 + m; };
+const noExpediente = () => { const m = minutoSP(); return m >= 7 * 60 && m < 23 * 60 + 40; };
+const horaDosPedidos = () => { const m = minutoSP(); return m >= 6 * 60 && m < 7 * 60; };
+const segundosAteAs7 = () => { const m = minutoSP(); return m < 7 * 60 ? (7 * 60 - m) * 60 : Infinity; };
 
-// O próximo pedido a fazer agora: o urgente sempre; os de "pode esperar" só de
-// madrugada, depois que o Diretor fechou a pauta do dia (ou a partir das 4h, se o
-// comitê não rodou, para a fila não travar).
+// O que a tela pública mostra fora do expediente
+function avisoForaDoExpediente() {
+  const m = minutoSP();
+  if (m >= 5 * 60 && m < 6 * 60) return { modo: 'pauta', aviso: 'O Diretor está montando a pauta do dia', acao: 'montando a pauta do dia' };
+  return { modo: 'folga', aviso: 'A bancada volta às 7h', acao: 'folga' };
+}
+
+/* ---------- pedidos do administrador ---------- */
+
+// O próximo pedido a fazer agora: o urgente sempre; os de "pode esperar" só entre
+// 6h e 7h, depois que o Diretor fechou a pauta do dia.
 async function proximoPedido() {
   const u = await destino.urgente().catch(() => null);
   const fila = (await destino.pedidos().catch(() => [])).filter((p) => p.status === 'fila').sort((a, b) => a.numero - b.numero);
@@ -399,10 +418,7 @@ async function proximoPedido() {
   }
   const urgente = fila.find((p) => p.urgencia === 'hoje');
   if (urgente) return urgente;
-  if (!madrugada()) return null;
-  const d = await destino.diretor().catch(() => null);
-  if (d?.pautaDoDia === hoje() || horaSP() >= 4) return fila[0] || null;
-  return null;
+  return horaDosPedidos() ? fila[0] || null : null;
 }
 
 async function fazPedido(p, tela = { modo: 'privado', aviso: 'Rodando no modo privado pelo Admin', acao: 'modo privado' }) {
@@ -462,6 +478,18 @@ while (Date.now() < fim - 20 * 60000 * FATOR) {
       await avisoPublico('lanche', avisoLanche, 'hora do lanche');
       log('pausa do administrador, bancada no lanche');
       await dorme(60);
+      continue;
+    }
+
+    // fora do expediente a tela pública descansa; pedido do administrador roda
+    // por trás (o urgente a qualquer hora, o "pode esperar" entre 6h e 7h)
+    if (!noExpediente()) {
+      const fora = avisoForaDoExpediente();
+      const pedidoFora = await proximoPedido();
+      if (pedidoFora) { await fazPedido(pedidoFora, fora); feitos++; continue; }
+      await avisoPublico(fora.modo, fora.aviso, fora.acao);
+      // acorda em ponto às 7h, sem esperar o minuto inteiro
+      await dorme(Math.max(5, Math.min(60, segundosAteAs7())));
       continue;
     }
 
