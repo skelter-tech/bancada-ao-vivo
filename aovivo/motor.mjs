@@ -405,13 +405,16 @@ async function proximoPedido() {
   return null;
 }
 
-async function fazPedido(p) {
+async function fazPedido(p, tela = { modo: 'privado', aviso: 'Rodando no modo privado pelo Admin', acao: 'modo privado' }) {
   log(`pedido ${p.numero} do administrador: ${p.tema}`);
   await destino.atualizaPedido({ ...p, status: 'em produção', inicio: agora() });
-  await avisoPublico('privado', 'Rodando no modo privado pelo Admin', 'modo privado');
+  await avisoPublico(tela.modo, tela.aviso, tela.acao);
   privado = true;
   E = novoEstado();
   E.modo = 'privado';
+  // é por esta marca que o admin sabe que tem trabalho privado para mostrar,
+  // qualquer que seja o aviso da tela pública
+  E.ativo = true;
   E.pedido = { id: p.id, numero: p.numero, tema: p.tema, urgencia: p.urgencia };
   let r;
   try {
@@ -427,6 +430,7 @@ async function fazPedido(p) {
   else await destino.atualizaPedido({ ...p, status: 'falhou', fim: agora(), motivo: r?.falhou || 'erro' });
   const u = await destino.urgente().catch(() => null);
   if (u?.id === p.id) await destino.limpaUrgente();
+  await destino.estadoPrivado({ ...E, ativo: false, atualizado: agora() }).catch(() => {});
   E = novoEstado();
   E.atual = { agente: 'Diretor', id: 'diretor', acao: 'pedido encerrado, voltando ao ao vivo', texto: '', pensando: true, inicio: agora() };
   await publica();
@@ -450,7 +454,12 @@ while (Date.now() < fim - 20 * 60000 * FATOR) {
     // acontece entre documentos) e a bancada vai lanchar até ele liberar
     const pausa = await destino.pausa().catch(() => null);
     if (pausa?.ativa) {
-      await avisoPublico('lanche', pausa.aviso || 'Rodando um pedido do Rubens no modo privado', 'hora do lanche');
+      const avisoLanche = pausa.aviso || 'Rodando um pedido do Rubens no modo privado';
+      // no lanche a tela pública fica parada, mas pedido do administrador roda:
+      // só ele vê o trabalho, pelo admin
+      const pedidoNoLanche = await proximoPedido();
+      if (pedidoNoLanche) { await fazPedido(pedidoNoLanche, { modo: 'lanche', aviso: avisoLanche, acao: 'hora do lanche' }); feitos++; continue; }
+      await avisoPublico('lanche', avisoLanche, 'hora do lanche');
       log('pausa do administrador, bancada no lanche');
       await dorme(60);
       continue;
