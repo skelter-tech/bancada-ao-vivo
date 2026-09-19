@@ -1,14 +1,19 @@
 name: Turno da bancada
 
+# Cada turno trabalha 5h30 e, ao terminar, chama o próximo. A agenda abaixo é só
+# reserva: em 19/09 o GitHub pulou quase todos os disparos de hora em hora e o
+# escritório ficou parado horas seguidas. Se a corrente quebrar, a reserva religa.
+# Para parar a bancada de vez: desative este workflow na aba Actions.
 on:
   schedule:
-    # um turno por hora, no minuto 17; cada turno trabalha 52 minutos
-    - cron: '17 * * * *'
+    - cron: '17 */3 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
+# um turno por vez: o que chegar enquanto outro trabalha espera na fila
 concurrency:
   group: turno
   cancel-in-progress: false
@@ -16,9 +21,14 @@ concurrency:
 jobs:
   turno:
     runs-on: ubuntu-latest
-    timeout-minutes: 58
+    # o limite do GitHub é 6 horas; o motor para de pegar trabalho novo 20 minutos
+    # antes do fim do turno, então 330 de turno cabem com folga em 350
+    timeout-minutes: 350
     steps:
+      # histórico inteiro: é pela data do último sinal de vida que se decide o próximo
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
@@ -26,17 +36,23 @@ jobs:
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           FIREBASE_CONTA: ${{ secrets.FIREBASE_CONTA }}
-          DURACAO_MIN: '52'
+          DURACAO_MIN: '330'
         run: |
           # sem o Firestore o trabalho não aparece em lugar nenhum: não gasta cota à toa
           if [ -z "$FIREBASE_CONTA" ]; then echo "FIREBASE_CONTA ausente, turno não roda"; exit 0; fi
           node aovivo/motor.mjs
+      # a corrente: este turno chama o próximo, mesmo se o motor tiver caído
+      - name: Chamar o próximo turno
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run turno.yml --repo "${{ github.repository }}"
       # O GitHub desliga agenda de repositório público sem atividade por 60 dias.
-      # No dia 1 de cada mês o turno da madrugada deixa um sinal de vida.
+      # Uma vez por mês, o primeiro turno do mês deixa um sinal de vida.
       - name: Sinal de vida
         if: always()
         run: |
-          if [ "$(date -u +%d%H)" = "0103" ]; then
+          if [ "$(git log -1 --format=%cd --date=format:%Y%m -- .vivo 2>/dev/null)" != "$(date -u +%Y%m)" ]; then
             date -u > .vivo
             git config user.name "Bancada" && git config user.email "bancada@users.noreply.github.com"
             git add .vivo && git commit -m "sinal de vida" && git push || true

@@ -9,32 +9,51 @@ import { coletar } from './feeds.mjs';
 const UA = 'Mozilla/5.0 (compatible; comite-pauta/1.0; +pesquisa de pauta)';
 
 /* ---------- o que é fonte confiável ----------
-   Lista fechada de propósito. Órgão público, universidade, periódico científico,
-   agência de notícia e os veículos de tecnologia que o comitê já usa. Um domínio
-   fora daqui não entra no texto, por melhor que pareça. */
+   Lista fechada de propósito. Um domínio fora daqui não entra no texto, por melhor
+   que pareça. A lista comentada, com o resultado do teste, está em
+   aovivo/fontes-confiaveis.md.
+
+   Cada veículo abaixo passou num teste em 19/09/2026: o Bing achou notícia recente
+   dele e a página abriu com texto legível, sem paywall. Saíram os que bloqueiam
+   leitura automática (Reuters, AP, Axios, Ars Technica, NYT, FT, Bloomberg, WSJ,
+   Economist, Politico, Nature, Science): estavam na lista, nunca abriam e só
+   ocupavam vaga de fonte que abre. */
+const VEICULOS = [
+  // Brasil: Globo, UOL, CNN, InfoMoney e a imprensa de referência
+  'g1.globo.com', 'oglobo.globo.com', 'valor.globo.com', 'epocanegocios.globo.com', 'revistapegn.globo.com', 'techtudo.com.br',
+  'uol.com.br', 'folha.uol.com.br', 'estadao.com.br', 'cnnbrasil.com.br', 'infomoney.com.br', 'exame.com', 'agenciabrasil.ebc.com.br',
+  'poder360.com.br', 'correiobraziliense.com.br', 'gazetadopovo.com.br', 'istoedinheiro.com.br', 'neofeed.com.br', 'braziljournal.com', 'veja.abril.com.br',
+  // Brasil: tecnologia, telecom e inovação
+  'canaltech.com.br', 'tecmundo.com.br', 'olhardigital.com.br', 'tecnoblog.net', 'telesintese.com.br', 'teletime.com.br', 'convergenciadigital.com.br',
+  'mobiletime.com.br', 'baguete.com.br', 'startse.com', 'agencia.fapesp.br', 'jornal.usp.br',
+  // internacional: imprensa geral e negócios
+  'bbc.com', 'bbc.co.uk', 'theguardian.com', 'cnn.com', 'cnbc.com', 'npr.org', 'time.com', 'fortune.com', 'semafor.com', 'dw.com', 'france24.com', 'euronews.com', 'hbr.org', 'restofworld.org',
+  // internacional: tecnologia e ciência
+  'techcrunch.com', 'theverge.com', 'wired.com', 'technologyreview.com', 'zdnet.com', 'theregister.com', 'datacenterdynamics.com', 'infoq.com', 'spectrum.ieee.org',
+  'siliconangle.com', 'computerworld.com', 'informationweek.com', 'cio.com', '404media.co', 'theconversation.com', 'scientificamerican.com', 'sciencedaily.com', 'phys.org', 'techxplore.com',
+];
 const CONFIAVEIS = [
   // governo e organismos
-  /\.gov(\.br)?$/, /\.leg\.br$/, /\.jus\.br$/, /(^|\.)ibge\.gov\.br$/, /(^|\.)europa\.eu$/, /(^|\.)oecd\.org$/, /(^|\.)un\.org$/, /(^|\.)who\.int$/, /(^|\.)worldbank\.org$/, /(^|\.)imf\.org$/, /(^|\.)itu\.int$/, /(^|\.)nist\.gov$/,
+  /\.gov(\.br)?$/, /\.leg\.br$/, /\.jus\.br$/, /(^|\.)europa\.eu$/, /(^|\.)oecd\.org$/, /(^|\.)un\.org$/, /(^|\.)who\.int$/, /(^|\.)worldbank\.org$/, /(^|\.)imf\.org$/, /(^|\.)itu\.int$/,
   // academia e ciência
-  /\.edu(\.br)?$/, /(^|\.)usp\.br$/, /(^|\.)unicamp\.br$/, /(^|\.)ufrj\.br$/, /(^|\.)fgv\.br$/, /(^|\.)arxiv\.org$/, /(^|\.)nature\.com$/, /(^|\.)science\.org$/, /(^|\.)acm\.org$/, /(^|\.)ieee\.org$/, /(^|\.)springer\.com$/, /(^|\.)sciencedirect\.com$/, /(^|\.)pnas\.org$/, /(^|\.)cell\.com$/, /(^|\.)mit\.edu$/, /(^|\.)stanford\.edu$/,
-  // agências e imprensa de referência
-  /(^|\.)reuters\.com$/, /(^|\.)apnews\.com$/, /(^|\.)bbc\.(com|co\.uk)$/, /(^|\.)ft\.com$/, /(^|\.)economist\.com$/, /(^|\.)nytimes\.com$/, /(^|\.)theguardian\.com$/, /(^|\.)wsj\.com$/, /(^|\.)bloomberg\.com$/,
-  /(^|\.)folha\.uol\.com\.br$/, /(^|\.)estadao\.com\.br$/, /(^|\.)valor\.globo\.com$/, /(^|\.)g1\.globo\.com$/, /(^|\.)oglobo\.globo\.com$/, /(^|\.)exame\.com$/, /(^|\.)agenciabrasil\.ebc\.com\.br$/, /(^|\.)nexojornal\.com\.br$/,
-  /(^|\.)poder360\.com\.br$/, /(^|\.)correiobraziliense\.com\.br$/, /(^|\.)gazetadopovo\.com\.br$/, /(^|\.)istoedinheiro\.com\.br$/, /(^|\.)infomoney\.com\.br$/, /(^|\.)cnnbrasil\.com\.br$/, /(^|\.)neofeed\.com\.br$/, /(^|\.)epocanegocios\.globo\.com$/,
-  /(^|\.)cnbc\.com$/, /(^|\.)axios\.com$/, /(^|\.)politico\.(com|eu)$/, /(^|\.)semafor\.com$/,
-  // imprensa especializada em tecnologia e telecom
-  /(^|\.)canaltech\.com\.br$/, /(^|\.)telesintese\.com\.br$/, /(^|\.)teletime\.com\.br$/, /(^|\.)convergenciadigital\.com\.br$/, /(^|\.)crn\.com$/, /(^|\.)trendforce\.com$/, /(^|\.)theregister\.com$/, /(^|\.)zdnet\.com$/, /(^|\.)venturebeat\.com$/, /(^|\.)datacenterdynamics\.com$/,
-  // tecnologia, os mesmos veículos que o comitê lê
-  /(^|\.)arstechnica\.com$/, /(^|\.)technologyreview\.com$/, /(^|\.)wired\.com$/, /(^|\.)theverge\.com$/, /(^|\.)techcrunch\.com$/, /(^|\.)infoq\.com$/, /(^|\.)ieee\.org$/, /(^|\.)simonwillison\.net$/,
+  /\.edu(\.br)?$/, /(^|\.)usp\.br$/, /(^|\.)unicamp\.br$/, /(^|\.)ufrj\.br$/, /(^|\.)fgv\.br$/, /(^|\.)arxiv\.org$/, /(^|\.)acm\.org$/, /(^|\.)springer\.com$/, /(^|\.)pnas\.org$/,
+  ...VEICULOS.map((d) => new RegExp(`(^|\\.)${d.replace(/\./g, '\\.')}$`)),
 ];
+export const TOTAL_VEICULOS = VEICULOS.length;
 
 export function dominio(url) {
   try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; }
 }
 
+// Conteúdo pago dentro de veículo confiável: é release com a marca do jornal. No
+// primeiro teste da área Mundo corporativo, um texto de valor.globo.com/patrocinado/dino
+// entrou como fonte.
+const PATROCINADO = /\/(patrocinado|conteudo-patrocinado|publieditorial|informe-publicitario|branded|dino|parceiros?|estudio-[a-z]+|conteudo-de-marca|sponsored|partner-content|paid-post)(\/|$)/i;
+
 export function confiavel(url) {
   const d = dominio(url);
-  return !!d && CONFIAVEIS.some((re) => re.test(d));
+  if (!d || PATROCINADO.test(String(url).replace(/^https?:\/\/[^/]+/, ''))) return false;
+  return CONFIAVEIS.some((re) => re.test(d));
 }
 
 /* ---------- nome de empresa ----------
@@ -62,17 +81,28 @@ export function empresasCitadas(texto) {
    documento real; a referência numerada já diz de onde veio. O nome sai do domínio
    de cada fonte usada, então a checagem acompanha a pesquisa, sem lista fixa.
    Repositório científico e órgão público podem ser citados. */
-const PODE_CITAR = /^(arxiv|gov|edu|usp|unicamp|ufrj|fgv|ibge|mit|stanford|nature|science|ieee|acm|oecd|europa|un|who|worldbank|imf|itu|nist|agenciabrasil)$/i;
+const PODE_CITAR = /^(arxiv|gov|edu|usp|unicamp|ufrj|fgv|ibge|mit|stanford|nature|science|ieee|acm|oecd|europa|un|who|worldbank|imf|itu|nist|agenciabrasil|fapesp)$/i;
+// Pedaço de domínio que é palavra comum em português: "jornal.usp.br" não pode
+// acusar todo texto que diga "jornal"
+const NAO_E_NOME = /^(com|br|org|net|co|uk|www|news|noticias|mercados|blog|jornal|agencia|abril|revista|spectrum|cio)$/i;
+// Veículo com nome de palavra comum só conta com maiúscula no meio da frase: "o
+// Valor informou" é o jornal, "o valor do contrato" não é. No documento 9, "valor"
+// minúsculo foi acusado como veículo citado.
+const NOME_AMBIGUO = new Set(['valor', 'exame', 'veja', 'time', 'fortune', 'terra']);
 
 export function veiculosCitados(texto, fontes) {
   const semLinks = String(texto).replace(/\]\([^)]*\)/g, ']').replace(/https?:\/\/\S+/g, '');
   const nomes = new Set();
+  const escapa = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   for (const f of fontes) {
     const partes = String(f.dominio || dominio(f.url)).split('.');
     // g1.globo.com -> g1 e globo; neofeed.com.br -> neofeed
     for (const p of partes) {
-      if (p.length < 2 || /^(com|br|org|net|co|uk|www|news|noticias|mercados|blog)$/i.test(p) || PODE_CITAR.test(p)) continue;
-      if (new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(semLinks)) nomes.add(p);
+      if (p.length < 2 || NAO_E_NOME.test(p) || PODE_CITAR.test(p)) continue;
+      const re = NOME_AMBIGUO.has(p.toLowerCase())
+        ? new RegExp(`(?<=[a-zà-ú,] )${escapa(p[0].toUpperCase() + p.slice(1))}\\b`)
+        : new RegExp(`\\b${escapa(p)}\\b`, 'i');
+      if (re.test(semLinks)) nomes.add(p);
     }
   }
   return [...nomes];
@@ -97,6 +127,50 @@ async function buscaNoticias(consultas, dias = 30) {
   if (consultas.en) fontes.push({ nome: 'Bing News en', url: `https://www.bing.com/news/search?q=${encodeURIComponent(consultas.en)}&format=rss&setlang=en-US&cc=US` });
   const { itens } = await coletar({ fontes, janelaHoras: dias * 24, maxItens: 40, maxPorFonte: 20 });
   return itens.map((i) => ({ tipo: 'notícia', titulo: i.titulo, url: linkReal(i.url), veiculo: i.veiculo, data: i.data?.toISOString?.() || null }));
+}
+
+/* ---------- Google Notícias ----------
+   O segundo canal de busca. O link do RSS é codificado, e desde 2024 só se resolve
+   em duas etapas: a página do artigo no Google traz uma assinatura e um carimbo, e
+   o batchexecute troca isso pela URL real (testado em 19/09/2026, 5 de 5). Custa
+   duas requisições por notícia, então só resolve o que já vem de veículo da lista:
+   o RSS diz o domínio do veículo antes de qualquer resolução. */
+const UA_NAV = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36';
+
+async function buscaGoogle(consultas, dias = 30) {
+  const pedidos = [];
+  if (consultas.pt) pedidos.push(`https://news.google.com/rss/search?q=${encodeURIComponent(`${consultas.pt} when:${dias}d`)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`);
+  if (consultas.en) pedidos.push(`https://news.google.com/rss/search?q=${encodeURIComponent(`${consultas.en} when:${dias}d`)}&hl=en-US&gl=US&ceid=US:en`);
+  const listas = await Promise.all(pedidos.map(async (u) => {
+    try {
+      const xml = await (await fetch(u, { headers: { 'user-agent': UA_NAV } })).text();
+      return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 20).map((m) => {
+        const pega = (re) => (m[1].match(re) || [])[1] || '';
+        const fonte = pega(/<source url="([^"]+)"/);
+        // o título do Google vem com " - Veículo" no fim
+        const titulo = pega(/<title>([\s\S]*?)<\/title>/).replace(/<!\[CDATA\[|\]\]>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+-\s+[^-]+$/, '').trim();
+        return { tipo: 'notícia', titulo, url: pega(/<link>([^<]+)<\/link>/), dominioPrevio: dominio(fonte), veiculo: dominio(fonte), data: new Date(pega(/<pubDate>([^<]+)<\/pubDate>/)).toISOString?.() || null, google: true };
+      });
+    } catch { return []; }
+  }));
+  return listas.flat().filter((n) => n.url && n.dominioPrevio);
+}
+
+export async function resolveGoogle(link) {
+  try {
+    const id = new URL(link).pathname.split('/').pop();
+    const pg = await (await fetch(`https://news.google.com/rss/articles/${id}`, { headers: { 'user-agent': UA_NAV } })).text();
+    const sg = (pg.match(/data-n-a-sg="([^"]+)"/) || [])[1];
+    const ts = (pg.match(/data-n-a-ts="([^"]+)"/) || [])[1];
+    if (!sg || !ts) return null;
+    const req = [[['Fbv4je', `["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,null,null,null,0,1],"X","X",1,[1,1,1],1,1,null,0,0,null,0],"${id}",${ts},"${sg}"]`, null, 'generic']]];
+    const r = await fetch('https://news.google.com/_/DotsSplashUi/data/batchexecute', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8', 'user-agent': UA_NAV },
+      body: `f.req=${encodeURIComponent(JSON.stringify(req))}`,
+    });
+    return ((await r.text()).match(/garturlres\\",\\"(https?:[^\\"]+)/) || [])[1] || null;
+  } catch { return null; }
 }
 
 async function buscaArxiv(consulta, max = 6) {
@@ -156,14 +230,32 @@ function textoDaPagina(html) {
 // entende inglês; as notícias vêm das duas línguas.
 export async function pesquisar(consultas, { maxFontes = 8, log = () => {} } = {}) {
   const c = typeof consultas === 'string' ? { pt: consultas, en: consultas } : consultas;
-  const [noticias, artigos] = await Promise.all([buscaNoticias(c), c.en ? buscaArxiv(c.en) : []]);
-  log(`busca pt "${c.pt || ''}" / en "${c.en || ''}": ${noticias.length} notícias, ${artigos.length} artigos`);
+  const [bing, google, artigos] = await Promise.all([buscaNoticias(c), buscaGoogle(c), c.en ? buscaArxiv(c.en) : []]);
+  log(`busca pt "${c.pt || ''}" / en "${c.en || ''}": ${bing.length} do Bing, ${google.length} do Google, ${artigos.length} artigos`);
+
+  // Bing e Google intercalados, sem repetir a mesma notícia (mesmo título) e com no
+  // máximo duas por veículo: um veículo só sustentando o texto não é apuração
+  const noticias = [];
+  const vistos = new Set();
+  const porVeiculo = new Map();
+  const chaveTitulo = (t) => String(t).toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 70);
+  for (let i = 0; i < Math.max(bing.length, google.length); i++) {
+    for (const n of [bing[i], google[i]]) {
+      if (!n) continue;
+      const d = n.dominioPrevio || dominio(n.url);
+      const k = chaveTitulo(n.titulo);
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      noticias.push({ ...n, _dom: d });
+    }
+  }
+  const limitaVeiculo = (n) => { const q = porVeiculo.get(n._dom) || 0; if (q >= 2) return false; porVeiculo.set(n._dom, q + 1); return true; };
 
   // pré-peneira pelo domínio que o link já mostra: não gasta tempo abrindo o que
   // seria recusado de qualquer jeito
   // intercala notícia e artigo, com no máximo 3 artigos: no primeiro teste o arXiv
   // ocupou 6 das 7 vagas e metade nem era do tema
-  const confiaveis = noticias.filter((n) => confiavel(n.url));
+  const confiaveis = noticias.filter((n) => confiavel(`https://${n._dom}/`)).filter(limitaVeiculo);
   const candidatos = [];
   for (let i = 0; i < Math.max(confiaveis.length, 3); i++) {
     if (confiaveis[i]) candidatos.push(confiaveis[i]);
@@ -173,21 +265,30 @@ export async function pesquisar(consultas, { maxFontes = 8, log = () => {} } = {
   const aprovadas = [];
   const recusadas = { naoAbriu: 0, naoConfiavel: 0, semTexto: 0 };
 
-  recusadas.naoConfiavel = noticias.length - noticias.filter((n) => confiavel(n.url)).length;
+  recusadas.naoConfiavel = noticias.length - noticias.filter((n) => confiavel(`https://${n._dom}/`)).length;
+  const urlsAprovadas = new Set();
   for (const f of candidatos) {
     if (aprovadas.length >= maxFontes) break;
+    if (f.google) {
+      const real = await resolveGoogle(f.url);
+      if (!real) { recusadas.naoAbriu++; continue; }
+      f.url = real;
+    }
+    if (urlsAprovadas.has(f.url)) continue;
     const p = await abre(f.url);
     if (!p.ok) { recusadas.naoAbriu++; continue; }
     if (!confiavel(p.url)) { recusadas.naoConfiavel++; continue; }
     const texto = f.tipo === 'artigo' ? `${f.titulo}. ${f.resumo}` : textoDaPagina(p.html);
     if (texto.length < 400) { recusadas.semTexto++; continue; }
-    aprovadas.push({ ...f, url: p.url, dominio: dominio(p.url), texto: texto.slice(0, 5000) });
+    urlsAprovadas.add(f.url);
+    const { google, dominioPrevio, _dom, ...limpa } = f;
+    aprovadas.push({ ...limpa, url: p.url, dominio: dominio(p.url), texto: texto.slice(0, 5000) });
   }
 
   const fontes = aprovadas.map((f, i) => ({ id: `f${i + 1}`, ...f }));
   // quem foi barrado pela lista: é com isto que se decide, com critério, se a
   // lista está curta demais ou fazendo o trabalho dela
-  const barrados = [...new Set(noticias.filter((n) => !confiavel(n.url)).map((n) => dominio(n.url)).filter(Boolean))];
+  const barrados = [...new Set(noticias.filter((n) => !confiavel(`https://${n._dom}/`)).map((n) => n._dom).filter(Boolean))];
   log(`peneira: ${fontes.length} aprovadas, recusadas ${recusadas.naoAbriu} que não abriram, ${recusadas.naoConfiavel} fora da lista confiável, ${recusadas.semTexto} sem texto`);
   if (barrados.length) log(`  fora da lista: ${barrados.join(', ')}`);
   return { consulta, fontes, recusadas, barrados };

@@ -24,6 +24,10 @@ const RESERVA = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.6-flash', 
 
 const esgotados = new Set();
 
+// O ao vivo roda o dia inteiro: quando a cota volta, o processo que marcou os
+// modelos como esgotados ainda está de pé e precisa esquecer a marca para tentar.
+export function liberaCotas() { esgotados.clear(); }
+
 async function chama({ chave, modelo, sistema, prompt, temperatura, schema }) {
   const corpo = {
     systemInstruction: { parts: [{ text: sistema }] },
@@ -151,7 +155,7 @@ export async function gerar({ modelo, sistema, prompt, temperatura = 0.9, schema
     ? ['groq:openai/gpt-oss-120b', 'groq:qwen/qwen3.8-27b', 'groq:openai/gpt-oss-20b']
     : [...RESERVA, ...(process.env.GROQ_API_KEY ? [GROQ_RESERVA] : [])];
   const fila = [principal, ...reserva.filter((m) => m !== principal)].filter((m) => !esgotados.has(m));
-  if (!fila.length) throw Object.assign(new Error('Todos os modelos estão sem cota diária. Ela volta à meia-noite do Pacífico.'), { fatal: true });
+  if (!fila.length) throw Object.assign(new Error('Todos os modelos estão sem cota diária. Ela volta à meia-noite do Pacífico.'), { fatal: true, semCota: true });
   let ultimoErro;
 
   for (let i = 0; i < fila.length; i++) {
@@ -171,9 +175,14 @@ export async function gerar({ modelo, sistema, prompt, temperatura = 0.9, schema
         ultimoErro = e;
         if (e.fatal) throw e;
         if (e.trocaModelo) break;
+        // limite por minuto do Groq (8 mil tokens): esperar o minuto virar resolve
+        if (/Groq HTTP 429/.test(e.message) && t < max - 1) { await dorme(25000 * (t + 1)); continue; }
         if (t < max - 1) await dorme((e.demanda ? 9000 : 4000) * 2 ** t);
       }
     }
   }
+  // a fila inteira caiu por cota diária: quem chama precisa saber que é cota, e
+  // não um erro qualquer, para esperar em vez de insistir
+  if (fila.every((m) => esgotados.has(m))) throw Object.assign(ultimoErro || new Error('sem cota'), { semCota: true });
   throw ultimoErro;
 }

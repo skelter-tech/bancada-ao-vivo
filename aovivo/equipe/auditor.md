@@ -15,6 +15,9 @@ sem fonte e link fora da pesquisa. Você confere o que o código não pega:
 - **Salto de causa.** Duas coisas juntas viraram uma causando a outra.
 - **Fonte citada no lugar errado.** O [f3] foi usado para algo que está no [f5].
 - **Título maior que o texto.**
+- **Abertura exagerada.** As duas primeiras linhas são o que aparece no feed antes
+  do "ver mais": se prometem mais do que as fontes dizem, é o problema mais grave
+  do post.
 
 Para cada problema: o trecho, o motivo, a correção. No fim, uma linha só:
 **APROVADO** ou **CORRIGIR**. Se o documento está bom, aprove e diga o que está
