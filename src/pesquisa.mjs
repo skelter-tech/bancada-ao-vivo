@@ -57,6 +57,27 @@ export function empresasCitadas(texto) {
   return [...achadas];
 }
 
+/* ---------- veículo citado pelo nome ----------
+   Veículo de imprensa também é empresa. "Segundo o NeoFeed" apareceu no primeiro
+   documento real; a referência numerada já diz de onde veio. O nome sai do domínio
+   de cada fonte usada, então a checagem acompanha a pesquisa, sem lista fixa.
+   Repositório científico e órgão público podem ser citados. */
+const PODE_CITAR = /^(arxiv|gov|edu|usp|unicamp|ufrj|fgv|ibge|mit|stanford|nature|science|ieee|acm|oecd|europa|un|who|worldbank|imf|itu|nist|agenciabrasil)$/i;
+
+export function veiculosCitados(texto, fontes) {
+  const semLinks = String(texto).replace(/\]\([^)]*\)/g, ']').replace(/https?:\/\/\S+/g, '');
+  const nomes = new Set();
+  for (const f of fontes) {
+    const partes = String(f.dominio || dominio(f.url)).split('.');
+    // g1.globo.com -> g1 e globo; neofeed.com.br -> neofeed
+    for (const p of partes) {
+      if (p.length < 2 || /^(com|br|org|net|co|uk|www|news|noticias|mercados|blog)$/i.test(p) || PODE_CITAR.test(p)) continue;
+      if (new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(semLinks)) nomes.add(p);
+    }
+  }
+  return [...nomes];
+}
+
 /* ---------- busca ----------
    Bing Notícias em RSS, e não Google Notícias: o Google esconde o link real atrás
    de um redirecionamento que só se resolve por script, e no primeiro teste as 18
@@ -89,11 +110,14 @@ async function buscaArxiv(consulta, max = 6) {
     const r = await fetch(`https://export.arxiv.org/api/query?search_query=${q}&sortBy=relevance&sortOrder=descending&max_results=${max}`, { headers: { 'user-agent': UA } });
     if (!r.ok) return [];
     const xml = await r.text();
+    // só os últimos 3 anos: por relevância, o arXiv trazia estudo de 2018, e numa
+    // bancada de novidades um artigo de oito anos atrás enfraquece o texto
+    const limite = Date.now() - 3 * 365 * 24 * 3600 * 1000;
     return [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map((m) => {
       const e = m[1];
       const pega = (t) => (e.match(new RegExp(`<${t}[^>]*>([\\s\\S]*?)</${t}>`)) || [])[1]?.replace(/\s+/g, ' ').trim() || '';
       return { tipo: 'artigo', titulo: pega('title'), url: pega('id').replace('http://', 'https://'), veiculo: 'arXiv', data: pega('published'), resumo: pega('summary').slice(0, 900) };
-    });
+    }).filter((a) => !a.data || Date.parse(a.data) >= limite);
   } catch { return []; }
 }
 

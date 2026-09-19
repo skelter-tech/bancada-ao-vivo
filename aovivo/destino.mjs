@@ -8,6 +8,9 @@ import { conectar } from '../src/firestore.mjs';
 // Firestore quando existe a conta de serviço (FIREBASE_CONTA no ambiente, ou o
 // arquivo .chave-firebase.json na raiz); arquivo local quando não existe.
 export async function destinoPadrao(raiz) {
+  // DESTINO=arquivo para testar no PC sem disputar a tela pública com o turno que
+  // estiver rodando no GitHub: dois motores no mesmo Firestore se atropelariam
+  if (process.env.DESTINO === 'arquivo') return destinoArquivo(raiz);
   const conta = process.env.FIREBASE_CONTA || await readFile(join(raiz, '.chave-firebase.json'), 'utf8').catch(() => '');
   return conta ? destinoFirestore(conta) : destinoArquivo(raiz);
 }

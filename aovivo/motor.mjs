@@ -9,7 +9,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gerar } from '../src/llm.mjs';
-import { pesquisar, empresasCitadas } from '../src/pesquisa.mjs';
+import { pesquisar, empresasCitadas, veiculosCitados } from '../src/pesquisa.mjs';
 import { numerosSemFonte, semTravessao } from '../src/fiscal.mjs';
 import { parecido } from '../src/memoria.mjs';
 import { lerEquipe } from '../bancada/equipe.mjs';
@@ -186,6 +186,7 @@ async function umDocumento() {
     const validos = new Set(fontes.map((f) => f.id));
     return {
       empresas: empresasCitadas(texto),
+      veiculos: veiculosCitados(texto, fontes),
       numeros: numerosSemFonte(texto, fontesTexto).map((n) => n.numero),
       codigos: [...new Set([...texto.matchAll(/\[(f\d+)\]/g)].map((m) => m[1]).filter((id) => !validos.has(id)))],
     };
@@ -193,6 +194,7 @@ async function umDocumento() {
   let f = confere(doc);
   const problemas = (x) => [
     ...(x.empresas.length ? [`Empresa citada pelo nome, proibido: ${x.empresas.join(', ')}. Descreva em vez de nomear.`] : []),
+    ...(x.veiculos.length ? [`Veículo de imprensa citado pelo nome no texto: ${x.veiculos.join(', ')}. Tire o nome; a referência numerada já mostra de onde veio.`] : []),
     ...(x.numeros.length ? [`Número que não aparece em nenhuma fonte: ${x.numeros.join(', ')}. Corte ou troque pelo número exato da fonte.`] : []),
     ...(x.codigos.length ? [`Código de fonte que não existe: ${x.codigos.join(', ')}.`] : []),
   ];
@@ -235,6 +237,7 @@ async function montaDocumento({ tema, doc: bruto, fontes, capa, fiscal }) {
   const titulo = (corpo.match(/^#\s+(.+)$/m) || [, tema.tema])[1].trim();
   const alertas = [
     ...(fiscal.empresas.length ? [`empresa citada: ${fiscal.empresas.join(', ')}`] : []),
+    ...(fiscal.veiculos?.length ? [`veículo citado: ${fiscal.veiculos.join(', ')}`] : []),
     ...(fiscal.numeros.length ? [`número sem fonte: ${fiscal.numeros.join(', ')}`] : []),
   ];
   const data = hoje();

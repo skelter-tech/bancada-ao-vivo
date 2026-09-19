@@ -21,7 +21,8 @@ Ninguém te passa pauta: você e o Pesquisador escolhem sozinhos.
 3. **Todo dado e toda notícia com a fonte.** Você só pode citar o que o
    Pesquisador trouxe, pelo código dele: [f1], [f2]. Número que não está numa
    fonte não entra. O sistema também confere isso.
-4. **Português do Brasil, direto, sem travessão.**
+4. **Não nomeie o veículo de imprensa no texto.** Nada de "segundo o jornal X": veículo também é empresa, e a referência numerada já mostra de onde veio a informação. Órgão público, universidade e periódico científico podem ser nomeados.
+5. **Português do Brasil, direto, sem travessão.**
 
 ## Como escolher o tema
 
