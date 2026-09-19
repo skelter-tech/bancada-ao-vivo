@@ -65,6 +65,12 @@ export function confiavel(url) {
 // A Meta aparece pelos produtos dela, que não têm esse problema.
 const EMPRESAS = [
   'OpenAI', 'Anthropic', 'Google', 'Alphabet', 'DeepMind', 'Microsoft', 'Facebook', 'Instagram', 'WhatsApp', 'Apple', 'Amazon', 'AWS', 'Nvidia', 'NVIDIA', 'Intel', 'AMD', 'Qualcomm', 'Samsung', 'Huawei', 'Tesla', 'xAI', 'SpaceX', 'IBM', 'Oracle', 'Salesforce', 'Adobe', 'Netflix', 'Uber', 'Mistral', 'Cohere', 'Hugging Face', 'Perplexity', 'Stability AI', 'Midjourney', 'ByteDance', 'TikTok', 'Alibaba', 'Tencent', 'Baidu', 'DeepSeek', 'Moonshot', 'Groq', 'Cerebras', 'TSMC', 'ASML', 'Broadcom', 'Cisco', 'Dell', 'HP', 'Lenovo', 'Palantir', 'Snowflake', 'Databricks', 'GitHub', 'Crusoe', 'CoreWeave', 'Magazine Luiza', 'Mercado Livre', 'iFood', 'Nubank', 'Itaú', 'Bradesco', 'Petrobras', 'Ambev', 'Totvs', 'PicPay', 'ChatGPT', 'Gemini', 'Claude', 'Copilot', 'Llama', 'Grok',
+  // Consultorias e institutos de pesquisa privados: são a fonte favorita de número
+  // em notícia de negócio ("segundo relatório da KPMG"), e no primeiro pedido do
+  // administrador a apuração citou a KPMG sem o fiscal ter o nome na lista.
+  'KPMG', 'Deloitte', 'PwC', 'PricewaterhouseCoopers', 'Ernst & Young', 'Accenture', 'McKinsey', 'BCG', 'Boston Consulting Group', 'Bain', 'Gartner', 'IDC', 'Forrester', 'Capgemini', 'Kearney', 'Oliver Wyman', 'Roland Berger', 'Nielsen', 'NielsenIQ', 'Kantar', 'Ipsos', 'Euromonitor', 'Statista', 'Datafolha', 'Serasa',
+  // varejo e logística, que aparecem em todo tema de supply chain
+  'Walmart', 'Carrefour', 'Assaí', 'Atacadão', 'GPA', 'Pão de Açúcar', 'Americanas', 'Casas Bahia', 'Via Varejo', 'Shein', 'Shopee', 'Temu', 'AliExpress', 'Unilever', 'Nestlé', 'Procter & Gamble', 'Coca-Cola', 'PepsiCo', 'SAP', 'Oracle', 'Blue Yonder', 'Manhattan Associates', 'Kinaxis', 'o9 Solutions', 'DHL', 'FedEx', 'UPS', 'Maersk', 'Loggi', 'Rappi', 'Stellantis', 'Volkswagen', 'Toyota', 'BYD', 'Vale S.A.',
 ];
 const RE_EMPRESAS = new RegExp(`\\b(${EMPRESAS.map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'g');
 
