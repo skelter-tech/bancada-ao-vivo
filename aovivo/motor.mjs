@@ -446,6 +446,16 @@ while (Date.now() < fim - 20 * 60000 * FATOR) {
     A = Object.fromEntries([...elenco.equipe, elenco.diretor].map((a) => [a.id, a]));
   }
   try {
+    // pausa do administrador: termina o documento em curso (esta conferência só
+    // acontece entre documentos) e a bancada vai lanchar até ele liberar
+    const pausa = await destino.pausa().catch(() => null);
+    if (pausa?.ativa) {
+      await avisoPublico('lanche', pausa.aviso || 'Rodando um pedido do Rubens no modo privado', 'hora do lanche');
+      log('pausa do administrador, bancada no lanche');
+      await dorme(60);
+      continue;
+    }
+
     // o Diretor montando a pauta do dia (comitê da madrugada): a bancada para e espera
     const d = await destino.diretor().catch(() => null);
     if (d?.rodando && Date.now() - Date.parse(d.desde || 0) < 3 * 3600000) {

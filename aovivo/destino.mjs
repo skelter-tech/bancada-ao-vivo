@@ -10,6 +10,7 @@
 //   pedidos/{id}         os pedidos do administrador e em que pé estão
 //   controle/urgente     o pedido "para hoje" que faz a bancada parar na hora
 //   controle/diretor     o Diretor montando a pauta do dia (escrito pelo comitê)
+//   controle/pausa       o administrador parou a bancada (lanche na tela pública)
 import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { conectar } from '../src/firestore.mjs';
@@ -48,6 +49,7 @@ export function destinoFirestore(conta) {
     urgente: () => db.le('controle/urgente'),
     limpaUrgente: () => db.apaga('controle/urgente').catch(() => {}),
     diretor: () => db.le('controle/diretor'),
+    pausa: () => db.le('controle/pausa'),
     pedidos: () => db.listaPorNumero('pedidos', 40),
     atualizaPedido: (p) => db.grava(`pedidos/${p.id}`, p, comNumero(p.numero)),
   };
@@ -82,6 +84,7 @@ export function destinoArquivo(raiz) {
     urgente: () => le('urgente.json', null),
     limpaUrgente: () => rm(join(dir, 'urgente.json'), { force: true }),
     diretor: () => le('diretor.json', null),
+    pausa: () => le('pausa.json', null),
     async pedidos() { return (await le('pedidos.json', [])).sort((a, b) => b.numero - a.numero); },
     async atualizaPedido(p) { const l = await le('pedidos.json', []); await grava('pedidos.json', [...l.filter((x) => x.id !== p.id), p]); },
   };
