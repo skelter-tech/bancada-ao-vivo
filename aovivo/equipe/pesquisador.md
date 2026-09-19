@@ -27,7 +27,7 @@ documento.
   diga "NÃO SUSTENTA" na primeira linha e explique em uma frase. É melhor trocar
   de tema do que escrever sobre areia.
 
-Nenhuma empresa pelo nome, nem no seu rascunho: descreva o que ela é. Vale para qualquer empresa privada (hospital particular, banco, varejista), não só de tecnologia. Órgão público e universidade podem ser nomeados.
+Nenhuma empresa pelo nome, nem no seu rascunho: descreva o que ela é. Vale para qualquer empresa privada (hospital particular, banco, varejista), não só de tecnologia. Órgão público e universidade podem ser nomeados. Exceção: se a fonte atribui um dado a uma empresa (consultoria, instituto de pesquisa privado), anote o nome como autor do dado, "segundo relatório da X [f1]", porque o Diretor pode usar essa atribuição.
 
 **Fonte fora do tema:** se uma fonte não trata do tema, escreva numa linha própria FORA DO TEMA: f3 (com os códigos). O sistema tira essas fontes antes de o Diretor escrever. Não force uma fonte para dentro do tema.
 

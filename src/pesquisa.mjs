@@ -74,11 +74,36 @@ const EMPRESAS = [
 ];
 const RE_EMPRESAS = new RegExp(`\\b(${EMPRESAS.map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'g');
 
-export function empresasCitadas(texto) {
+/* A exceção, pedida pelo Rubens em 19/09: empresa pode ser nomeada como AUTORA de
+   um dado ("segundo relatório da KPMG [f1]"), nunca como protagonista ("a Nvidia
+   lançou"). O código só aceita quando confere as duas coisas na mesma frase:
+   1. a frase é de atribuição (segundo, de acordo com, relatório, pesquisa...) e o
+      nome vem logo depois dessa palavra;
+   2. a frase cita uma fonte da pesquisa cujo texto contém o mesmo nome. Isso impede
+      o modelo de atribuir a uma empresa um dado que a fonte não atribui. */
+const ATRIBUICAO = /(segundo|conforme|de acordo com|relat[óo]rio|pesquisa|estudo|levantamento|sondagem|dados|[íi]ndice|ranking|report|survey|study|according to|research)\b[^.;:!?\n]{0,45}$/i;
+
+function frases(texto) {
+  // o código da fonte às vezes vem depois do ponto ("...Report. [f1]"): ele fica
+  // com a frase de antes, que é a que ele sustenta
+  return String(texto).split(/(?<=[.!?](?:\s*\[f\d+\])*)\s+(?!\[f\d+\])|\n+/);
+}
+
+export function empresasCitadas(texto, fontes = null) {
   const achadas = new Set();
-  // links não contam: o domínio de uma fonte pode ter nome de empresa e isso é referência, não citação
-  const semLinks = String(texto).replace(/\]\([^)]*\)/g, ']').replace(/https?:\/\/\S+/g, '');
-  for (const m of semLinks.matchAll(RE_EMPRESAS)) achadas.add(m[1]);
+  const porId = new Map((fontes || []).map((f) => [f.id, f]));
+  for (const frase of frases(texto)) {
+    // links não contam: o domínio de uma fonte pode ter nome de empresa e isso é referência, não citação
+    const semLinks = frase.replace(/\]\([^)]*\)/g, ']').replace(/https?:\/\/\S+/g, '');
+    const codigos = [...frase.matchAll(/\[(f\d+)\]/g)].map((m) => m[1]);
+    for (const m of semLinks.matchAll(RE_EMPRESAS)) {
+      const nome = m[1];
+      const antes = semLinks.slice(0, m.index);
+      const atribuida = fontes && ATRIBUICAO.test(antes)
+        && codigos.some((id) => porId.get(id) && new RegExp(`\\b${nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(`${porId.get(id).titulo} ${porId.get(id).texto}`));
+      if (!atribuida) achadas.add(nome);
+    }
+  }
   return [...achadas];
 }
 

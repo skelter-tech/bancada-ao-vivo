@@ -290,7 +290,7 @@ async function umDocumento({ pedido = null } = {}) {
     const validos = new Set(fontes.map((f) => f.id));
     const { post, usadas } = paraLinkedin(texto, fontes);
     return {
-      empresas: empresasCitadas(texto),
+      empresas: empresasCitadas(texto, fontes),
       veiculos: veiculosCitados(texto, fontes),
       numeros: numerosSemFonte(texto, fontesTexto).map((n) => n.numero),
       codigos: [...new Set([...texto.matchAll(/\[(f\d+)\]/g)].map((m) => m[1]).filter((id) => !validos.has(id)))],
@@ -299,7 +299,7 @@ async function umDocumento({ pedido = null } = {}) {
     };
   };
   const problemas = (x) => [
-    ...(x.empresas.length ? [`Empresa citada pelo nome, proibido: ${x.empresas.join(', ')}. Descreva em vez de nomear.`] : []),
+    ...(x.empresas.length ? [`Empresa citada pelo nome, proibido: ${x.empresas.join(', ')}. Descreva em vez de nomear. Só pode ficar se for autora de um dado, escrito como "segundo relatório da X" com o código da fonte que traz esse nome na mesma frase.`] : []),
     ...(x.veiculos.length ? [`Veículo de imprensa citado pelo nome no texto: ${x.veiculos.join(', ')}. Tire o nome; a referência numerada já mostra de onde veio.`] : []),
     ...(x.numeros.length ? [`Número que não aparece em nenhuma fonte: ${x.numeros.join(', ')}. Corte ou troque pelo número exato da fonte.`] : []),
     ...(x.codigos.length ? [`Código de fonte que não existe: ${x.codigos.join(', ')}.`] : []),
@@ -324,7 +324,7 @@ async function umDocumento({ pedido = null } = {}) {
 
   if (/CORRIGIR\s*\**\s*$/i.test(parecer.trim()) || /\*\*CORRIGIR\*\*/.test(parecer)) {
     await pensa(A.diretor, 'aplicando o parecer do Auditor');
-    doc = await chama(A.diretor, ['Aplique as correções do Auditor. Mantenha todas as regras: sem empresa pelo nome, sem veículo pelo nome, só números das fontes, pelo menos três fontes pelo código, no máximo 2.600 caracteres.', '', '## Parecer', parecer, '', '## Fontes', listaFontes, '', '## O post', doc].join('\n'));
+    doc = await chama(A.diretor, ['Aplique as correções do Auditor. Mantenha todas as regras: sem empresa pelo nome (só como autora de dado, "segundo relatório da X [fN]"), sem veículo pelo nome, só números das fontes, pelo menos três fontes pelo código, no máximo 2.600 caracteres.', '', '## Parecer', parecer, '', '## Fontes', listaFontes, '', '## O post', doc].join('\n'));
     await escreve(A.diretor, 'versão final', doc);
     f = confere(doc);
   }

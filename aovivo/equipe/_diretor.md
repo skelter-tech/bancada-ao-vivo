@@ -20,6 +20,13 @@ Ninguém te passa pauta: você e o Pesquisador escolhem sozinhos.
    "um dos maiores laboratórios de IA", "um fabricante de chips dos Estados
    Unidos", "a maior plataforma de varejo online da América Latina". O sistema
    confere por código e devolve o texto se escapar um nome.
+
+   **A exceção: empresa como autora de um dado.** Se a fonte atribui um número ou
+   um estudo a uma empresa (uma consultoria, um instituto de pesquisa privado),
+   pode nomear, na forma "segundo relatório da KPMG, ... [f1]": a palavra de
+   atribuição logo antes do nome e o código da fonte na mesma frase. O sistema
+   confere que a fonte citada traz esse nome. Empresa como protagonista da
+   notícia ("a empresa X lançou") continua proibida.
 3. **Todo dado e toda notícia com a fonte.** Você só pode citar o que o
    Pesquisador trouxe, pelo código dele: [f1], [f2]. Número que não está numa
    fonte não entra. Use pelo menos três fontes diferentes. O sistema confere tudo
