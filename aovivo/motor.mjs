@@ -40,6 +40,10 @@ const DURACAO_MIN = Number(process.env.DURACAO_MIN) || 50;
 // TESTE_RAPIDO encurta só as esperas, para conferir o fluxo; as chamadas são reais
 const FATOR = process.env.TESTE_RAPIDO ? 0.03 : 1;
 const RESPIROS = [7, 11, 13, 17];
+// minutos entre o começo de um documento e o do próximo, para a cota de tokens do
+// Groq durar o expediente inteiro
+const INTERVALO_MIN = Number(process.env.INTERVALO_MIN) || 20;
+let inicioDoDocumento = 0;
 const LIMITE_POST = 2800;
 
 const dorme = (s) => new Promise((ok) => setTimeout(ok, s * 1000 * FATOR));
@@ -194,8 +198,11 @@ async function temaDoPedido(pedido, tentativa) {
   return t;
 }
 
-function blocoFontes(fontes, comTexto) {
-  return fontes.map((f) => `[${f.id}] ${f.titulo} (${f.dominio}, ${f.tipo}${f.data ? `, ${String(f.data).slice(0, 10)}` : ''})${comTexto ? `\n${f.texto.slice(0, 1400)}` : ''}`).join('\n\n');
+// O trecho de cada fonte vai no pedido duas vezes (apuração e auditoria), e é o
+// que mais pesa na cota de tokens do dia. 1.100 letras ainda dão o miolo da
+// notícia; a auditoria se vira com menos, porque confere afirmação, não contexto.
+function blocoFontes(fontes, comTexto, letras = 1100) {
+  return fontes.map((f) => `[${f.id}] ${f.titulo} (${f.dominio}, ${f.tipo}${f.data ? `, ${String(f.data).slice(0, 10)}` : ''})${comTexto ? `\n${f.texto.slice(0, letras)}` : ''}`).join('\n\n');
 }
 
 async function umDocumento({ pedido = null } = {}) {
@@ -319,7 +326,7 @@ async function umDocumento({ pedido = null } = {}) {
   }
 
   await pensa(A.auditor, 'conferindo com as fontes do lado');
-  const parecer = await chama(A.auditor, ['## Fontes', blocoFontes(fontes, true), '', '## O post', doc].join('\n'));
+  const parecer = await chama(A.auditor, ['## Fontes', blocoFontes(fontes, true, 700), '', '## O post', doc].join('\n'));
   await escreve(A.auditor, 'parecer', parecer);
 
   if (/CORRIGIR\s*\**\s*$/i.test(parecer.trim()) || /\*\*CORRIGIR\*\*/.test(parecer)) {
@@ -506,6 +513,7 @@ while (Date.now() < fim - 20 * 60000 * FATOR) {
     if (pedido) { await fazPedido(pedido); feitos++; }
     else {
       E = novoEstado();
+      inicioDoDocumento = Date.now();
       const doc = await umDocumento();
       if (doc?.id) feitos++;
     }
@@ -528,9 +536,18 @@ while (Date.now() < fim - 20 * 60000 * FATOR) {
   }
   E = novoEstado();
   E.atual = { agente: 'Diretor', id: 'diretor', acao: 'pensando no próximo tema', texto: '', pensando: true, inicio: agora() };
+  /* O compasso do dia. O freio do Groq não é o número de chamadas: são 200 mil
+     tokens por dia POR MODELO, 600 mil no total. Cada documento gasta uns 11 mil
+     depois do corte dos trechos de fonte, então a cota dá umas 50 peças. Espaçando
+     um documento a cada 20 minutos, as 17 horas de expediente cabem na cota; sem
+     isso, em 20/09 a bancada fez 36 documentos em 7 horas e ficou parada até a noite. */
+  const faltaDoCompasso = Math.max(0, INTERVALO_MIN * 60 - (Date.now() - inicioDoDocumento) / 1000);
+  if (faltaDoCompasso > 0) log(`compasso: ${Math.round(faltaDoCompasso / 60)} min até o próximo documento`);
+  // a tela mostra a hora do próximo, para a pausa do compasso não parecer travamento
+  E.proximo = new Date(Date.now() + faltaDoCompasso * 1000).toISOString();
   await publica();
   // a espera entre documentos também para na hora se chegar pedido urgente
-  for (let s = 0, total = 40 + Math.random() * 40; s < total; s += 20) {
+  for (let s = 0, total = Math.max(40 + Math.random() * 40, faltaDoCompasso); s < total; s += 20) {
     await dorme(Math.min(20, total - s));
     if ((await destino.urgente().catch(() => null))?.id) break;
   }

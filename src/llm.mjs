@@ -79,6 +79,9 @@ async function chama({ chave, modelo, sistema, prompt, temperatura, schema }) {
    prefixo, assim: "groq:openai/gpt-oss-120b". */
 const GROQ = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_TETO_TOKENS = 7600;
+// Tokens de SAÍDA por minuto, por modelo. O limite de entrada (8.000 por minuto) é
+// outro, e o que manda no dia é o de tokens por dia: 200.000 por modelo.
+const OTPM = { 'qwen/qwen3.8-27b': 1000 };
 export const GROQ_RESERVA = 'groq:openai/gpt-oss-120b';
 
 // Estimativa grosseira, no lado seguro: português dá perto de 3,5 caracteres por token.
@@ -102,7 +105,10 @@ async function chamaGroq({ modelo, sistema, prompt, temperatura, schema }) {
   const sis = schema
     ? `${sistema}\n\nResponda APENAS com um objeto JSON válido, sem texto antes ou depois, neste formato:\n${JSON.stringify(molde(schema), null, 1)}`
     : sistema;
-  const saidaMax = schema ? 2500 : 3000;
+  // Teto de saída por minuto (OTPM), que é por modelo e não aparece nos cabeçalhos:
+  // o qwen aceita 1.000 e recusava na hora todo pedido de 2.500 ou 3.000, sem nunca
+  // poder dar certo (visto no turno de 20/09).
+  const saidaMax = Math.min(schema ? 2500 : 3000, OTPM[modelo.replace(/^groq:/, '')] || 3000);
   if (tokensEstimados(sis, prompt) + saidaMax > GROQ_TETO_TOKENS) {
     throw Object.assign(new Error('pedido grande demais para os 8 mil tokens por minuto do Groq'), { trocaModelo: true });
   }
@@ -126,6 +132,8 @@ async function chamaGroq({ modelo, sistema, prompt, temperatura, schema }) {
     // 413 é pedido grande demais; 400 no Groq costuma ser JSON mal formado pelo
     // modelo. Nos dois casos, quem resolve é o próximo da fila, não a repetição.
     if (r.status === 413 || r.status === 400 || r.status === 404) erro.trocaModelo = true;
+    // "Request too large" não melhora esperando: o pedido não cabe neste modelo
+    if (r.status === 429 && /request too large/i.test(txt)) erro.trocaModelo = true;
     if (r.status === 429 && /per day|RPD|TPD/i.test(txt)) { erro.trocaModelo = true; esgotados.add(modelo); }
     throw erro;
   }
