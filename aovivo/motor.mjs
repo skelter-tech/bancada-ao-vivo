@@ -398,9 +398,15 @@ async function montaDocumento({ tema, area, doc: bruto, fontes, imagem, pedido }
   ].join('\n');
   const id = `${pedido ? 'p' : ''}${data}-${String(numero).padStart(4, '0')}`;
   const pronto = { id, numero, titulo, tema: tema.tema, categoria: area.nome, data, post, comentario, imagem: img, texto, markdown: texto, alertas: [], pedido: pedido?.id || null };
+  // O arquivo só é gravado DEPOIS de o anúncio terminar de aparecer na tela. Ele
+  // já está pronto antes, mas liberar o download enquanto a cena ainda corre faria
+  // a lista encher sozinha, sem relação com o que se vê acontecendo.
+  await escreve(A.diretor, 'publicou', `${pedido ? 'Pedido' : 'Documento'} ${numero}: ${titulo}\n\n${post}`);
   if (pedido) await destino.documentoPrivado(pronto);
   else await destino.documento(pronto);
-  await escreve(A.diretor, 'publicou', `${pedido ? 'Pedido' : 'Documento'} ${numero}: ${titulo}\n\n${post}`);
+  // a tela avisa que saiu documento novo, para a lista não esperar a próxima leitura
+  E.publicou = { numero, titulo, em: agora() };
+  await publica();
   return pronto;
 }
 
