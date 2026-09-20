@@ -1,0 +1,34 @@
+name: Vigia da bancada
+
+# De meia em meia hora, confere se a bancada está trabalhando e religa o turno se
+# ela travou. O resultado de cada ronda vai para o Firestore e aparece no /admin/.
+# Existe para o escritório se cuidar sozinho com o PC do Rubens desligado.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: vigia
+  cancel-in-progress: true
+
+jobs:
+  ronda:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Ronda
+        env:
+          FIREBASE_CONTA: ${{ secrets.FIREBASE_CONTA }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$FIREBASE_CONTA" ]; then echo "sem FIREBASE_CONTA, nada a vigiar"; exit 0; fi
+          node aovivo/vigia.mjs
