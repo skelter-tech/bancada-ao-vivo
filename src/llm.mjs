@@ -29,6 +29,7 @@ const esgotados = new Set();
 export function liberaCotas() { esgotados.clear(); }
 
 async function chama({ chave, modelo, sistema, prompt, temperatura, schema }) {
+  if (!chave) throw Object.assign(new Error('GEMINI_API_KEY ausente'), { trocaModelo: true });
   const corpo = {
     systemInstruction: { parts: [{ text: sistema }] },
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -153,16 +154,24 @@ export async function gerar({ modelo, sistema, prompt, temperatura = 0.9, schema
 
   // MODELO_TESTE força um modelo em tudo: serve para testar o fluxo num dia em
   // que os outros já gastaram a cota, sem mexer nos papéis.
-  const principal = process.env.MODELO_TESTE || modelo;
+  // O papel pode trazer uma fila própria, separada por vírgula:
+  // "gemini-3.5-flash, gemini-3.6-flash, groq:openai/gpt-oss-120b". É assim que as
+  // etapas caras em token vão para o Gemini (poucas chamadas, pedido grande) e as
+  // etapas de muitas chamadas ficam no Groq.
+  const escolhidos = String(process.env.MODELO_TESTE || modelo).split(',').map((s) => s.trim()).filter(Boolean);
+  const principal = escolhidos[0];
   // O Groq entra no fim de toda fila: quando o Google inteiro cai em 503 ou zera a
   // cota, ele é outro fornecedor e não cai junto.
   // SO_GROQ=1 é o trabalho ao vivo: roda o dia inteiro e não pode encostar nas 20
   // chamadas diárias do Gemini, que são do expediente da manhã. As reservas passam
   // a ser os outros modelos do Groq, cada um com a sua cota de 1.000.
+  // No ao vivo (SO_GROQ) a fila é do Groq, que tem mil chamadas por dia. O Gemini
+  // entra no fim como resgate: em 20/09 dois dos três modelos do Groq zeraram os
+  // 200 mil tokens do dia e a bancada ficou parada horas com o Google intocado.
   const reserva = process.env.SO_GROQ
-    ? ['groq:openai/gpt-oss-120b', 'groq:qwen/qwen3.8-27b', 'groq:openai/gpt-oss-20b']
+    ? ['groq:openai/gpt-oss-120b', 'groq:qwen/qwen3.8-27b', 'groq:openai/gpt-oss-20b', ...(process.env.GEMINI_API_KEY ? RESERVA : [])]
     : [...RESERVA, ...(process.env.GROQ_API_KEY ? [GROQ_RESERVA] : [])];
-  const fila = [principal, ...reserva.filter((m) => m !== principal)].filter((m) => !esgotados.has(m));
+  const fila = [...escolhidos, ...reserva.filter((m) => !escolhidos.includes(m))].filter((m) => !esgotados.has(m));
   if (!fila.length) throw Object.assign(new Error('Todos os modelos estão sem cota diária. Ela volta à meia-noite do Pacífico.'), { fatal: true, semCota: true });
   let ultimoErro;
 

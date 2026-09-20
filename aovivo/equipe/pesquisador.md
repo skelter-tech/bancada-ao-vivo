@@ -1,7 +1,7 @@
 ---
 nome: Pesquisador
 funcao: apuração
-modelo: groq:openai/gpt-oss-120b
+modelo: gemini-3.5-flash, gemini-3.6-flash, groq:openai/gpt-oss-120b
 temperatura: 0.5
 ordem: 1
 entrega: A apuração do tema, só com o que as fontes dizem

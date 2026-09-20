@@ -42,7 +42,7 @@ const FATOR = process.env.TESTE_RAPIDO ? 0.03 : 1;
 const RESPIROS = [7, 11, 13, 17];
 // minutos entre o começo de um documento e o do próximo, para a cota de tokens do
 // Groq durar o expediente inteiro
-const INTERVALO_MIN = Number(process.env.INTERVALO_MIN) || 20;
+const INTERVALO_MIN = Number(process.env.INTERVALO_MIN) || 13;
 let inicioDoDocumento = 0;
 const LIMITE_POST = 2800;
 
@@ -141,6 +141,9 @@ async function escreve(agente, acao, bruto) {
 }
 
 const chama = (agente, prompt, schema = null) => gerar({ modelo: agente.modelo, sistema: agente.papel, prompt, temperatura: agente.temperatura, schema });
+// quanto de cada fonte cabe no pedido: o Gemini lê o texto quase inteiro, o Groq
+// tem 8 mil tokens por minuto e precisa do trecho curto
+const letrasPara = (agente, curto) => (String(agente.modelo).trim().startsWith('gemini') ? curto * 3 : curto);
 const FISCAL = { nome: 'Fiscal', id: 'fiscal' };
 
 /* ---------- as quatro áreas ----------

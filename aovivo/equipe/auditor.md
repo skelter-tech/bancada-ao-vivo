@@ -1,7 +1,7 @@
 ---
 nome: Auditor
 funcao: verificação
-modelo: groq:qwen/qwen3.8-27b
+modelo: gemini-3.1-flash-lite, gemini-flash-latest, groq:openai/gpt-oss-120b
 temperatura: 0.3
 ordem: 5
 entrega: O parecer sobre o documento

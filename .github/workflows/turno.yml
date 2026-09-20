@@ -35,6 +35,7 @@ jobs:
       - name: Trabalhar
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FIREBASE_CONTA: ${{ secrets.FIREBASE_CONTA }}
           DURACAO_MIN: '330'
         run: |
