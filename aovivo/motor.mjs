@@ -15,7 +15,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gerar, liberaCotas } from '../src/llm.mjs';
 import { pesquisar, empresasCitadas, veiculosCitados } from '../src/pesquisa.mjs';
-import { numerosSemFonte, semTravessao } from '../src/fiscal.mjs';
+import { numerosSemFonte, semTravessao, pareceIngles } from '../src/fiscal.mjs';
 import { paraLinkedin } from '../src/linkedin.mjs';
 import { parecido } from '../src/memoria.mjs';
 import { separa } from '../src/vault.mjs';
@@ -311,6 +311,7 @@ async function umDocumento({ pedido = null } = {}) {
       codigos: [...new Set([...texto.matchAll(/\[(f\d+)\]/g)].map((m) => m[1]).filter((id) => !validos.has(id)))],
       usadas: usadas.length,
       tamanho: post.length,
+      ingles: pareceIngles(post),
     };
   };
   const problemas = (x) => [
@@ -318,6 +319,7 @@ async function umDocumento({ pedido = null } = {}) {
     ...(x.veiculos.length ? [`Veículo de imprensa citado pelo nome no texto: ${x.veiculos.join(', ')}. Tire o nome; a referência numerada já mostra de onde veio.`] : []),
     ...(x.numeros.length ? [`Número que não aparece em nenhuma fonte: ${x.numeros.join(', ')}. Corte ou troque pelo número exato da fonte.`] : []),
     ...(x.codigos.length ? [`Código de fonte que não existe: ${x.codigos.join(', ')}.`] : []),
+    ...(x.ingles ? ['O post saiu em inglês. Escreva em português do Brasil, mesmo quando as fontes estiverem em inglês.'] : []),
     ...(x.usadas < 3 ? [`O post cita só ${x.usadas} fonte(s). Use pelo menos três fontes diferentes da lista, cada uma pelo código.`] : []),
     ...(x.tamanho > LIMITE_POST ? [`O post tem ${x.tamanho} caracteres e o limite é ${LIMITE_POST - 200}. Encurte sem perder as fontes.`] : []),
   ];
@@ -388,6 +390,10 @@ async function montaDocumento({ tema, area, doc: bruto, fontes, imagem, pedido }
     linha, 'PRIMEIRO COMENTÁRIO (as referências, link fora do post)', linha, '',
     comentario, '',
     linha, 'IMAGEM (prompt para o gerador de imagem)', linha, '',
+    // o tema vai junto do prompt: é a referência de quem gera a imagem, e amarra
+    // a cena ao texto em vez de virar foto genérica de tecnologia
+    `Pauta ilustrada: ${tema.tema}`,
+    `Área: ${area.nome}`, '',
     img, '',
   ].join('\n');
   const id = `${pedido ? 'p' : ''}${data}-${String(numero).padStart(4, '0')}`;

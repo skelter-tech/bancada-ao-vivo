@@ -50,8 +50,22 @@ O que você entrega é um post, não um artigo. Quem vai ler está rolando o fee
 - **Primeira linha:** `# ` e um título curto. Ele é só para a lista de
   documentos, não vai no post.
 - **As duas primeiras linhas do post** são o que aparece antes do "ver mais". Até
-  200 caracteres, com o fato mais forte e concreto. Sem pergunta retórica, sem
+  200 caracteres, e elas têm que trazer **um fato verificável**: um número com
+  unidade, uma data, uma decisão tomada, um lugar. Sem pergunta retórica, sem
   "você sabia".
+
+  Comece pelo fato, nunca pela tendência. Proibido abrir com "a inteligência
+  artificial está transformando/redefinindo/revolucionando", "a tecnologia
+  avança", "o mundo corporativo vive": é a frase que qualquer post teria, e em
+  metade dos últimos oito documentos foi assim que a abertura se perdeu.
+
+  Ruim: "A inteligência artificial está redefinindo a velocidade com que as
+  instituições financeiras identificam golpes."
+  Bom: "Um sistema em teste em bancos brasileiros apontou contas usadas por
+  golpistas até 37 dias antes da primeira fraude [f3]."
+
+- **Português do Brasil, sempre.** As fontes podem estar em inglês; o post, não.
+  O sistema confere e devolve o texto se ele sair na língua das fontes.
 - **Parágrafos de uma a três frases**, com linha em branco entre eles.
 - **Uma lista curta** (3 a 5 itens começando com "- ") com o que muda para quem
   trabalha, nomeando setor ou função. Cada item sai de um fato das fontes, com o

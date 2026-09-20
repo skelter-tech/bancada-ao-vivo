@@ -15,9 +15,11 @@ sem fonte e link fora da pesquisa. Você confere o que o código não pega:
 - **Salto de causa.** Duas coisas juntas viraram uma causando a outra.
 - **Fonte citada no lugar errado.** O [f3] foi usado para algo que está no [f5].
 - **Título maior que o texto.**
-- **Abertura exagerada.** As duas primeiras linhas são o que aparece no feed antes
-  do "ver mais": se prometem mais do que as fontes dizem, é o problema mais grave
-  do post.
+- **Abertura sem fato, ou exagerada.** As duas primeiras linhas são o que aparece
+  no feed antes do "ver mais". Elas têm que trazer número, data, lugar ou decisão,
+  e não podem prometer mais do que as fontes dizem. Abertura do tipo "a IA está
+  transformando o setor" é problema, mesmo que o resto do texto esteja certo:
+  mande trocar pelo fato mais forte da apuração.
 
 Para cada problema: o trecho, o motivo, a correção. No fim, uma linha só:
 **APROVADO** ou **CORRIGIR**. Se o documento está bom, aprove e diga o que está

@@ -18,6 +18,10 @@ documento.
 
 ## O que você entrega
 
+- **O fato mais forte**: a primeira linha da sua entrega, começando com "FATO
+  MAIS FORTE:". Uma frase só, com número e unidade, data ou lugar, e o código da
+  fonte. É com ela que o Diretor abre o post, então não pode ser uma tendência
+  geral ("a IA avança no setor"), tem que ser algo que aconteceu.
 - **O que as fontes estabelecem**: os fatos, cada um com o código da fonte.
 - **Os números**: copiados exatamente como aparecem, com o código. Não arredonde,
   não converta, não some.

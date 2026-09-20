@@ -73,3 +73,18 @@ export function semTravessao(texto) {
     .replace(/,\s*,/g, ',')
     .replace(/,\s*([.;:!?])/g, '$1');
 }
+
+/* ---------- o post saiu em inglês ----------
+   Aconteceu no documento 51: fontes em inglês e o modelo respondeu na língua
+   delas. Como quase todo post tem termo técnico em inglês ("machine learning",
+   "forecast"), a conta é por palavra funcional, que só aparece em frase inglesa
+   de verdade. */
+const FUNCIONAIS = /\b(the|and|of|with|that|for|from|this|these|are|is|was|were|have|has|had|will|would|can|could|their|which|been|than|about|into|through)\b/gi;
+
+export function pareceIngles(texto) {
+  const limpo = String(texto).replace(/https?:\/\/\S+/g, ' ').replace(/#\S+/g, ' ');
+  const palavras = limpo.split(/\s+/).filter(Boolean).length;
+  if (palavras < 25) return false;
+  const achadas = (limpo.match(FUNCIONAIS) || []).length;
+  return achadas / palavras > 0.06;
+}
