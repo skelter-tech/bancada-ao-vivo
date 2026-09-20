@@ -14,7 +14,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gerar, liberaCotas } from '../src/llm.mjs';
-import { pesquisar, empresasCitadas, veiculosCitados } from '../src/pesquisa.mjs';
+import { pesquisar, empresasCitadas, veiculosCitados, manchetes, buscaFeeds } from '../src/pesquisa.mjs';
 import { numerosSemFonte, semTravessao, pareceIngles } from '../src/fiscal.mjs';
 import { paraLinkedin } from '../src/linkedin.mjs';
 import { parecido } from '../src/memoria.mjs';
@@ -210,6 +210,57 @@ function blocoFontes(fontes, comTexto, letras = 1100) {
   return fontes.map((f) => `[${f.id}] ${f.titulo} (${f.dominio}, ${f.tipo}${f.data ? `, ${String(f.data).slice(0, 10)}` : ''})${comTexto ? `\n${f.texto.slice(0, letras)}` : ''}`).join('\n\n');
 }
 
+const SCHEMA_MANCHETE = {
+  type: 'OBJECT',
+  properties: {
+    numero: { type: 'NUMBER', description: 'O número da manchete escolhida na lista.' },
+    tema: { type: 'STRING', description: 'O tema do documento em uma frase, sem nome de empresa.' },
+    porque: { type: 'STRING', description: 'Duas frases: por que este tema importa para quem trabalha.' },
+    palavras: { type: 'STRING', description: 'De 3 a 5 palavras do assunto, para achar as outras notícias sobre ele.' },
+  },
+  required: ['numero', 'tema', 'porque', 'palavras'],
+};
+
+// O caminho de quando a busca falha: escolher entre o que os veículos publicaram
+async function pelasManchetes(recentes) {
+  await pensa(A.diretor, 'lendo as manchetes do dia');
+  const lista = await manchetes({ dias: 2, max: 40 }).catch(() => []);
+  if (lista.length < 5) { log('nem as manchetes vieram'); return null; }
+  const t = await chama(A.diretor, [
+    `Hoje é ${dataPorExtenso()}. A busca na internet está fora do ar, então o tema sai das manchetes que os veículos publicaram agora.`,
+    'Escolha UMA manchete que dê um documento útil para quem trabalha, em tecnologia, inovação, mundo corporativo ou IA. Evite nota de consumo, lançamento de produto e política partidária.',
+    '', ...lista.map((m, i) => `${i + 1}. ${m.titulo} (${m.veiculo})`),
+    recentes.length ? `\nTemas recentes, NÃO repita:\n${recentes.slice(-30).map((r) => `- ${r}`).join('\n')}` : '',
+  ].join('\n'), SCHEMA_MANCHETE);
+
+  const escolhida = lista[Math.round(t.numero) - 1];
+  if (!escolhida) return null;
+  await escreve(A.diretor, 'escolheu o tema', `${t.tema}\n\n${t.porque}`);
+  const peca = { tema: t.tema, area: 'Manchete do dia', fontes: [] };
+  E.peca = peca;
+
+  await pensa(A.pesquisador, 'lendo a manchete e o que mais saiu sobre ela');
+  // a manchete escolhida mais as parecidas, achadas nos próprios feeds
+  const relacionadas = await buscaFeeds({ pt: `${t.palavras} ${escolhida.titulo}`, en: t.palavras }).catch(() => []);
+  const itens = [escolhida, ...relacionadas.filter((r) => r.url !== escolhida.url)].slice(0, 8);
+  const p = await pesquisar({ pt: t.palavras, en: '' }, { maxFontes: 6, log, itens });
+  const fontes = p.fontes;
+  peca.fontes = fontes.map((f) => ({ id: f.id, titulo: f.titulo, url: f.url, dominio: f.dominio, tipo: f.tipo }));
+  await escreve(A.pesquisador, 'separou as fontes', [
+    `${fontes.length} fontes abertas e lidas, a partir das manchetes do dia.`,
+    '', ...fontes.map((f) => `[${f.id}] ${f.dominio}: ${f.titulo}`),
+  ].join('\n'));
+  if (fontes.length < 3) {
+    await escreve(A.pesquisador, 'recusou o tema', 'Nem pelas manchetes deu três fontes. Melhor esperar a busca voltar.');
+    return null;
+  }
+  await pensa(A.pesquisador, `lendo ${fontes.length} fontes`);
+  const apuracao = await chama(A.pesquisador, [`Tema: ${t.tema}`, '', '## Fontes (use só estas, pelo código)', blocoFontes(fontes, true, letrasPara(A.pesquisador, 1100))].join('\n'));
+  if (/^\W*N[ÃA]O SUSTENTA/i.test(apuracao)) { await escreve(A.pesquisador, 'recusou o tema', apuracao); return null; }
+  await escreve(A.pesquisador, 'apuração', apuracao);
+  return { tema: { ...t, tema: t.tema }, fontes, apuracao, peca };
+}
+
 async function umDocumento({ pedido = null } = {}) {
   const qualidade = !!pedido;
   // 200 temas, uns quatro dias de trabalho: com 40, "detecção de fraudes em
@@ -272,6 +323,15 @@ async function umDocumento({ pedido = null } = {}) {
     }
     break;
   }
+  /* Plano B: o buscador bloqueou o servidor e nenhum tema achou fonte. Em vez de
+     desistir, o Diretor escolhe entre as manchetes que os veículos publicaram,
+     lidas pelo RSS deles, que não depende de buscador nenhum. Foi o que salvou a
+     tarde de 20/09, quando Bing e Google passaram a devolver zero. */
+  if (!apuracao && !pedido) {
+    const r = await pelasManchetes(recentes);
+    if (r) { tema = r.tema; fontes = r.fontes; apuracao = r.apuracao; E.peca = r.peca; }
+  }
+
   if (!apuracao || /^\W*N[ÃA]O SUSTENTA/i.test(apuracao)) {
     await escreve(A.diretor, 'pausa', pedido ? 'Três buscas sem fonte suficiente para o pedido. Aviso o administrador.' : 'Três temas sem fonte suficiente. Pausa curta e recomeço com outro recorte.');
     return { falhou: 'sem fonte suficiente em três buscas' };

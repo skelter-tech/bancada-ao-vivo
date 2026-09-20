@@ -2,7 +2,10 @@
    tela e título vira cerquilha. O código tira a marcação e troca [f2] por (1), (2),
    na ordem em que as fontes aparecem no texto; os links vão no primeiro comentário. */
 export function paraLinkedin(doc, fontes) {
-  const semTitulo = String(doc).replace(/^\s*#\s+.+\n?/, '').trim();
+  const semTitulo = String(doc).replace(/^\s*#\s+.+\n?/, '').trim()
+    // "[f2, f5]" vira "[f2][f5]": agrupado, o código escapava da troca e aparecia
+    // cru no post (visto no teste de 20/09)
+    .replace(/\[\s*(f\d+(?:\s*[,;/e]+\s*f\d+)+)\s*\]/g, (m, g) => (g.match(/f\d+/g) || []).map((x) => `[${x}]`).join(''));
   const usadas = [...new Set([...semTitulo.matchAll(/\[(f\d+)\]/g)].map((m) => m[1]))].filter((id) => fontes.some((f) => f.id === id));
   const post = semTitulo
     .replace(/\[(f\d+)\]/g, (m, id) => (usadas.includes(id) ? `(${usadas.indexOf(id) + 1})` : ''))

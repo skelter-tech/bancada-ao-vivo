@@ -187,6 +187,103 @@ async function buscaGoogle(consultas, dias = 30) {
   return listas.flat().filter((n) => n.url && n.dominioPrevio);
 }
 
+/* ---------- o terceiro canal: o RSS dos próprios veículos ----------
+   Buscador não é confiável para quem roda o dia inteiro do mesmo servidor: em
+   20/09, depois de horas de turnos, o Bing e o Google passaram a devolver zero e
+   o Pesquisador recusou três temas seguidos por falta de fonte. O RSS de cada
+   veículo não depende de buscador nenhum. Ele entra só quando a busca vem fraca,
+   porque traz o noticiário do dia e não o tema procurado: o casamento com o tema
+   é feito aqui, por palavra. */
+const FEEDS = [
+  // 'tec' entra inteiro nas manchetes; 'geral' só quando a notícia é do assunto
+  ['g1 Tecnologia', 'https://g1.globo.com/rss/g1/tecnologia/', 'tec'], ['Canaltech', 'https://canaltech.com.br/rss/', 'tec'],
+  ['Olhar Digital', 'https://olhardigital.com.br/feed/', 'tec'], ['Tecnoblog', 'https://tecnoblog.net/feed/', 'tec'],
+  ['Telesíntese', 'https://telesintese.com.br/feed/', 'tec'], ['Mobile Time', 'https://www.mobiletime.com.br/feed/', 'tec'],
+  ['The Verge', 'https://www.theverge.com/rss/index.xml', 'tec'], ['TechCrunch', 'https://techcrunch.com/feed/', 'tec'],
+  ['ZDNet', 'https://www.zdnet.com/news/rss.xml', 'tec'], ['The Register', 'https://www.theregister.com/headlines.atom', 'tec'],
+  ['MIT Tech Review', 'https://www.technologyreview.com/feed/', 'tec'], ['Phys.org', 'https://phys.org/rss-feed/technology-news/', 'tec'],
+  ['InfoQ', 'https://feed.infoq.com/', 'tec'], ['DatacenterDynamics', 'https://www.datacenterdynamics.com/en/rss/', 'tec'],
+  ['g1 Economia', 'https://g1.globo.com/rss/g1/economia/', 'geral'], ['Exame', 'https://exame.com/feed/', 'geral'],
+  ['InfoMoney', 'https://www.infomoney.com.br/feed/', 'geral'], ['Poder360', 'https://www.poder360.com.br/feed/', 'geral'],
+  ['Brazil Journal', 'https://braziljournal.com/feed/', 'geral'], ['CNN Brasil', 'https://www.cnnbrasil.com.br/feed/', 'geral'],
+  ['Estadão', 'https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/economia/', 'geral'],
+];
+
+// promoção, jogo e entretenimento entram nos feeds de tecnologia e não são pauta
+const NAO_SERVE = /\b(promo[cç][aã]o|promo[cç][oõ]es|desconto|cupom|black friday|melhores (jogos|filmes|s[eé]ries)|gameplay|jogos?|console|playstation|ps5|xbox|nintendo|filmes?|s[eé]ries?|novela|netflix|trailer|futebol|campeonato|hor[oó]scopo|celebridade|unboxing|coupon|guerra|ataque|bombardeio|mata|matou|morte|morreu|assassin|crime|tiroteio|acidente|reality|bbb|a fazenda|paredao|eliminad)\b/i;
+
+// o que é assunto da bancada, para separar notícia de tecnologia e negócio do
+// resto do noticiário geral (novela, futebol, política partidária)
+const DO_TEMA = /\b(ia|inteligencia artificial|algoritm|machine learning|modelo de linguagem|software|hardware|aplicativo|plataforma|nuvem|cloud|data ?center|servidor|chip|semicondutor|processador|telecom|5g|banda larga|fibra optica|satelite|drone|rob[oô]|automacao|automatiza|digitaliza|transformacao digital|cyber|ciberseguran|seguranca digital|privacidade|dados pessoais|lgpd|startup|fintech|venture|e-?commerce|varejo digital|industria 4|manufatura|logistica|cadeia de suprimentos|energia|renovav|bateria|eletrific|produtividade|gestao|lideranca|governanca|regulacao|regulament|inovacao|patente|pesquisa cientifica|universidade|quantum|quantic|blockchain|criptomoeda|biotec|agritech|healthtech|edtech|technology|artificial intelligence|cybersecurity|chips?|semiconductor|innovation|productivity|supply chain|regulation)\b/i;
+
+const semAcento = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const RUIDO = /^(de|da|do|para|com|sem|por|the|and|for|of|in|on|to|e|a|o|as|os|um|uma)$/;
+
+export async function buscaFeeds(consultas, dias = 21) {
+  const termos = [...new Set(`${consultas.pt || ''} ${consultas.en || ''}`.split(/\s+/).map(semAcento).filter((w) => w.length > 3 && !RUIDO.test(w)))];
+  if (!termos.length) return [];
+  const { itens } = await coletar({
+    fontes: FEEDS.map(([nome, url]) => ({ nome, url })),
+    janelaHoras: dias * 24, maxItens: 900, maxPorFonte: 60,
+  });
+  // palavra que aparece em quase toda notícia de tecnologia casa com tudo e não
+  // diz nada sobre o tema: vale meio ponto
+  const GENERICA = /^(inteligencia|artificial|tecnologia|tecnologica|digital|digitais|dados|empresa|empresas|mercado|sistema|sistemas|intelligence|technology|digitally|data|company|companies|market|system|systems)$/;
+  const peso = (t) => (GENERICA.test(t) ? 0.5 : 1) + (t.length > 7 && !GENERICA.test(t) ? 1 : 0);
+  const especificos = termos.filter((t) => !GENERICA.test(t));
+  return itens.map((i) => {
+    const titulo = semAcento(i.titulo);
+    const texto = `${titulo} ${semAcento(i.resumo || '')}`;
+    const casou = termos.filter((t) => texto.includes(t));
+    // uma palavra específica do tema tem que estar no TÍTULO: sem isso, "segurança
+    // edge computing" casava com notícia de segurança pública
+    const noTitulo = especificos.some((t) => titulo.includes(t));
+    // e duas palavras específicas ao todo: com uma só, "segurança edge computing"
+    // trazia câmera de segurança em promoção
+    const duasEspecificas = especificos.filter((t) => texto.includes(t)).length >= 2;
+    return { i, peso: noTitulo && duasEspecificas ? casou.reduce((s, t) => s + peso(t), 0) : 0 };
+  }).filter((x) => x.peso >= 2)
+    .sort((a, b) => b.peso - a.peso)
+    .slice(0, 12)
+    .map(({ i }) => ({ tipo: 'notícia', titulo: i.titulo, url: i.url, veiculo: i.veiculo, data: i.data?.toISOString?.() || null }));
+}
+
+/* ---------- DuckDuckGo e GDELT ----------
+   Dois canais que não dependem de Bing nem de Google, para o dia em que os dois
+   bloqueiam o servidor. O DuckDuckGo devolve HTML e o link vem no href; o GDELT é
+   uma base pública de notícias do mundo inteiro, com API aberta e sem chave. */
+export async function buscaDuckDuckGo(consultas) {
+  const saida = [];
+  for (const q of [consultas.pt, consultas.en].filter(Boolean)) {
+    try {
+      const r = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, { headers: { 'user-agent': UA_NAV, accept: 'text/html' } });
+      if (!r.ok) continue;
+      const html = await r.text();
+      for (const m of html.matchAll(/<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)) {
+        let url = m[1].replace(/&amp;/g, '&');
+        // o DuckDuckGo embrulha o link em /l/?uddg=
+        const dentro = url.match(/[?&]uddg=([^&]+)/);
+        if (dentro) url = decodeURIComponent(dentro[1]);
+        const titulo = m[2].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').trim();
+        if (/^https?:/.test(url) && titulo) saida.push({ tipo: 'notícia', titulo, url, veiculo: dominio(url), data: null });
+      }
+    } catch { /* segue para o próximo canal */ }
+  }
+  return saida.slice(0, 20);
+}
+
+export async function buscaGdelt(consultas, dias = 21) {
+  const q = consultas.en || consultas.pt;
+  if (!q) return [];
+  try {
+    const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(q)}&mode=artlist&format=json&maxrecords=25&timespan=${dias}d&sort=hybridrel`;
+    const r = await fetch(url, { headers: { 'user-agent': UA_NAV } });
+    if (!r.ok) return [];
+    const j = JSON.parse(await r.text());
+    return (j.articles || []).map((a) => ({ tipo: 'notícia', titulo: a.title, url: a.url, veiculo: dominio(a.url), data: a.seendate ? `${a.seendate.slice(0, 4)}-${a.seendate.slice(4, 6)}-${a.seendate.slice(6, 8)}` : null }));
+  } catch { return []; }
+}
+
 export async function resolveGoogle(link) {
   try {
     const id = new URL(link).pathname.split('/').pop();
@@ -259,19 +356,68 @@ function textoDaPagina(html) {
    único jeito de o texto citá-la. */
 // consultas: { pt: 'termo em português', en: 'term in english' }. O arXiv só
 // entende inglês; as notícias vêm das duas línguas.
-export async function pesquisar(consultas, { maxFontes = 8, log = () => {} } = {}) {
-  const c = typeof consultas === 'string' ? { pt: consultas, en: consultas } : consultas;
-  const [bing, google, artigos] = await Promise.all([buscaNoticias(c), buscaGoogle(c), c.en ? buscaArxiv(c.en) : []]);
-  log(`busca pt "${c.pt || ''}" / en "${c.en || ''}": ${bing.length} do Bing, ${google.length} do Google, ${artigos.length} artigos`);
+// As manchetes que os veículos publicaram, sem passar por buscador nenhum. É
+// com elas que o Diretor escolhe o tema nos dias em que a busca está bloqueada.
+export async function manchetes({ dias = 2, max = 45 } = {}) {
 
+  const { itens } = await coletar({
+    fontes: FEEDS.map(([nome, url]) => ({ nome, url })),
+    janelaHoras: dias * 24, maxItens: 600, maxPorFonte: 25,
+  });
+  return itens
+    .filter((i) => confiavel(i.url))
+    // sem acento dos dois lados: a manchete vem com "logística" e a lista tem "logistica"
+    .filter((i) => {
+      const t = semAcento(`${i.titulo} ${i.resumo || ''}`);
+      return DO_TEMA.test(t) && !NAO_SERVE.test(semAcento(i.titulo));
+    })
+    .slice(0, max)
+    .map((i) => ({ tipo: 'notícia', titulo: i.titulo, url: i.url, veiculo: i.veiculo, data: i.data?.toISOString?.() || null }));
+}
+
+export async function pesquisar(consultas, { maxFontes = 8, log = () => {}, itens = null } = {}) {
+  const c = typeof consultas === 'string' ? { pt: consultas, en: consultas } : (consultas || { pt: '', en: '' });
+  // com a lista pronta (as manchetes escolhidas pelo Diretor), não há o que buscar
+  if (itens) {
+    const [bing, google, artigos] = [itens, [], c.en ? await buscaArxiv(c.en, 3) : []];
+    log(`sem busca: ${itens.length} manchetes escolhidas, ${artigos.length} artigos`);
+    return peneira(c, bing, google, artigos, [], { maxFontes, log });
+  }
+  // SEM_BUSCADOR=1 finge que Bing e Google estão bloqueados: é como se testa o
+  // caminho alternativo num dia em que eles estão respondendo normalmente
+  const semBuscador = process.env.SEM_BUSCADOR === '1';
+  const [bing, google, artigos] = semBuscador
+    ? [[], [], c.en ? await buscaArxiv(c.en) : []]
+    : await Promise.all([buscaNoticias(c), buscaGoogle(c), c.en ? buscaArxiv(c.en) : []]);
+  log(`busca pt "${c.pt || ''}" / en "${c.en || ''}": ${bing.length} do Bing, ${google.length} do Google, ${artigos.length} artigos`);
+  // buscador fraco (bloqueio de IP, quase sempre) não pode virar "tema sem fonte":
+  // o RSS dos veículos entra como terceiro canal
+  let feeds = [];
+  if (bing.length + google.length < 6) {
+    // primeiro os outros buscadores, depois o RSS dos veículos
+    const [ddg, gdelt] = await Promise.all([buscaDuckDuckGo(c).catch(() => []), buscaGdelt(c).catch(() => [])]);
+    feeds = [...ddg, ...gdelt];
+    log(`busca fraca: ${ddg.length} do DuckDuckGo, ${gdelt.length} do GDELT`);
+    if (feeds.length + bing.length + google.length < 6) {
+      const rss = await buscaFeeds(c).catch(() => []);
+      feeds = [...feeds, ...rss];
+      log(`ainda fraca, fui aos feeds dos veículos: ${rss.length} notícias`);
+    }
+  }
+  return peneira(c, bing, google, artigos, feeds, { maxFontes, log });
+}
+
+/* A peneira, igual para qualquer canal: abre cada candidato, confere o domínio na
+   lista confiável e guarda só o que tem texto legível. */
+async function peneira(c, bing, google, artigos, feeds, { maxFontes, log }) {
   // Bing e Google intercalados, sem repetir a mesma notícia (mesmo título) e com no
   // máximo duas por veículo: um veículo só sustentando o texto não é apuração
   const noticias = [];
   const vistos = new Set();
   const porVeiculo = new Map();
   const chaveTitulo = (t) => String(t).toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 70);
-  for (let i = 0; i < Math.max(bing.length, google.length); i++) {
-    for (const n of [bing[i], google[i]]) {
+  for (let i = 0; i < Math.max(bing.length, google.length, feeds.length); i++) {
+    for (const n of [bing[i], google[i], feeds[i]]) {
       if (!n) continue;
       const d = n.dominioPrevio || dominio(n.url);
       const k = chaveTitulo(n.titulo);
