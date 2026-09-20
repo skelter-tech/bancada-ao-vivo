@@ -177,7 +177,9 @@ async function escolheTema(area, recentes, recusados) {
     `Área da vez: **${area.nome}**, ou seja, ${area.foco}. Sem nome de empresa, com chance real de ter fonte pública e confiável.`,
     '',
     `${REGRA_BUSCA} Deixe o tema amplo também: o recorte (Brasil, um setor) só entra no texto se as fontes o cobrirem.`,
-    recentes.length ? `\nTemas dos últimos documentos, NÃO repita nem chegue perto:\n${recentes.map((r) => `- ${r}`).join('\n')}` : '',
+    // o prompt leva os 45 mais recentes; a conferência por código olha bem mais
+    // fundo, porque a lista inteira num pedido só encarece cada chamada
+    recentes.length ? `\nTemas dos últimos documentos, NÃO repita nem chegue perto:\n${recentes.slice(-45).map((r) => `- ${r}`).join('\n')}` : '',
     recusados.length ? `\nTemas que o Pesquisador acabou de recusar por falta de fonte:\n${recusados.map((r) => `- ${r}`).join('\n')}` : '',
   ].join('\n'), SCHEMA_TEMA);
   // repetição conferida por código: o modelo esquece a lista que acabou de ler
@@ -210,7 +212,10 @@ function blocoFontes(fontes, comTexto, letras = 1100) {
 
 async function umDocumento({ pedido = null } = {}) {
   const qualidade = !!pedido;
-  const recentes = pedido ? [] : await destino.temasRecentes();
+  // 200 temas, uns quatro dias de trabalho: com 40, "detecção de fraudes em
+  // pagamentos digitais" voltou no dia seguinte, porque a bancada passou a fazer
+  // mais de 40 documentos por dia
+  const recentes = pedido ? [] : await destino.temasRecentes(200);
   const numeroPrevisto = pedido ? 0 : await destino.proximoNumero();
   const area = pedido ? { nome: 'Pedido do administrador' } : AREAS[numeroPrevisto % AREAS.length];
   const recusados = [];
