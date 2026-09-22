@@ -22,6 +22,7 @@ import { separa } from '../src/vault.mjs';
 import { lerEquipe } from '../bancada/equipe.mjs';
 import { destinoPadrao } from './destino.mjs';
 import { novoDiario, anota, marcasDoFiscal } from './diario.mjs';
+import { pauta, filtraBacklog, filtraSugestoes, SCHEMA_BACKLOG, SCHEMA_SUGESTOES } from './reuniao.mjs';
 
 const RAIZ = join(import.meta.dirname, '..');
 // data e hora em São Paulo, sem importar o publicar.mjs, que arrastaria o comitê
@@ -595,6 +596,98 @@ async function fazPedido(p, tela = { modo: 'privado', aviso: 'Rodando no modo pr
   if (r?.semCota) throw Object.assign(new Error('sem cota'), { semCota: true });
 }
 
+/* ---------- a reunião de sábado ----------
+   Uma vez por fim de semana, e à vista de quem estiver no site: a bancada lê o
+   diário da semana, separa o backlog e diz o que falta na ferramenta.
+
+   Duas chamadas em vez de uma porque o Groq corta a saída em 2.500 tokens e as
+   duas respostas juntas não cabem. Separadas, cada uma tem espaço de sobra.
+
+   Nada do que sai daqui muda o sistema sozinho. Vira cartão no /admin/. */
+async function fazReuniao(id) {
+  const dias = await destino.diasDoDiario(7).catch(() => []);
+  const p = pauta(dias);
+
+  await avisoPublico('reuniao', 'Sábado de manhã: a bancada está em reunião, olhando a semana que passou.', 'reunião de sábado');
+  E = novoEstado();
+  E.modo = 'reuniao';
+  E.aviso = 'Reunião de sábado: o que a semana mostrou';
+
+  // semana sem diário nenhum: não há o que discutir, e inventar seria o oposto
+  // do motivo de a reunião existir
+  if (!p.resumo.episodios) {
+    await escreve(A.diretor, 'abriu a reunião', 'Não há diário desta semana para ler. Sem registro, não há o que concluir: a reunião fica para o próximo sábado.');
+    const vazia = { id, numero: Number(id.replace(/-/g, '')), quando: agora(), semana: p.resumo.dias, vazia: true, backlog: [], arquivar: [], sugestoes: [], resumo: p.resumo };
+    await destino.gravaReuniao(vazia).catch((e) => log(`reunião não gravou: ${e.message}`));
+    return vazia;
+  }
+
+  await escreve(A.diretor, 'abriu a reunião', [
+    `Semana de ${p.resumo.dias.slice(-1)[0]} a ${p.resumo.dias[0]}.`,
+    `${p.resumo.tentativas} tentativas de documento, ${p.resumo.publicados} publicados, ${p.recusadas.length} temas recusados.`,
+    '', 'Hoje não escrevemos pauta. Olhamos o que não deu certo e por quê.',
+  ].join('\n'));
+
+  /* 1. O backlog, com o Pesquisador: foi ele que recusou cada um desses temas
+        por falta de fonte, então é dele a leitura de quais valem outra busca. */
+  await pensa(A.pesquisador, `relendo os ${p.recusadas.length} temas recusados da semana`);
+  const b = await chama(A.pesquisador, [
+    'Você está na reunião de sábado. Não é para escrever documento nenhum hoje.',
+    'Esta é a lista dos temas que a bancada quis escrever nesta semana e não conseguiu, cada um com o código do episódio e o motivo.',
+    '',
+    'Separe em dois grupos: os que valem outra tentativa na semana que vem, e os que não valem.',
+    'Vale outra tentativa quando o problema era a busca (estreita demais, com nome próprio, com ano ou país) ou o recorte, e não o assunto.',
+    'Não vale quando o assunto não tem fonte pública confiável, ou quando é parecido demais com o que já foi publicado.',
+    '',
+    'Use SÓ os códigos que estão na lista. Não invente código nem tema que não esteja aqui.',
+    '', p.texto,
+  ].join('\n'), SCHEMA_BACKLOG);
+
+  const retomar = filtraBacklog(b.retomar, p.recusadas);
+  const arquivar = filtraBacklog(b.arquivar, p.recusadas);
+  await escreve(A.pesquisador, 'fechou o backlog da semana', [
+    `${retomar.passaram.length} temas voltam para a mesa na semana que vem, ${arquivar.passaram.length} ficam de fora.`,
+    '', ...retomar.passaram.map((x) => `[${x.episodio}] ${x.tema}\n  ${x.porque}`),
+    ...(retomar.caidas.length + arquivar.caidas.length ? ['', `(${retomar.caidas.length + arquivar.caidas.length} item(ns) citando episódio que não existe no diário, descartados pelo sistema.)`] : []),
+  ].join('\n'));
+
+  /* 2. A avaliação da ferramenta, com o Auditor: o trabalho dele já é olhar o
+        que saiu e dizer o que está errado. Aqui ele olha a semana inteira. */
+  await pensa(A.auditor, 'somando a semana e procurando o que se repete');
+  const sg = await chama(A.auditor, [
+    'Você está na reunião de sábado. Hoje você não confere um post: você olha a semana inteira da bancada e diz o que falta na ferramenta.',
+    '',
+    'A pergunta é esta: o que aconteceu vezes suficientes nesta semana para merecer existir no sistema, e hoje não existe?',
+    'Sugestão boa é sobre o trabalho que você enxerga aqui: como o tema é escolhido, como a fonte é buscada, o que o fiscal confere, quando a bancada desiste.',
+    'Você NÃO enxerga o site, o blog, a geração de imagem nem a área do administrador. Não opine sobre eles.',
+    '',
+    'REGRA DURA: cada sugestão precisa citar os códigos dos episódios desta semana que a sustentam. Sem episódio, a sugestão é descartada pelo sistema antes de chegar na tela.',
+    'Prefira duas sugestões sustentadas a quatro inventadas.',
+    '', p.texto,
+  ].join('\n'), SCHEMA_SUGESTOES);
+
+  const sug = filtraSugestoes(sg.sugestoes, dias);
+  await escreve(A.auditor, 'avaliação da semana', sug.passaram.length ? [
+    ...sug.passaram.map((x) => `**${x.titulo}**\n${x.observacao}\nProposta: ${x.proposta}\nEpisódios: ${x.episodios.join(', ')}`),
+    ...(sug.caidas.length ? ['', `(${sug.caidas.length} sugestão(ões) sem episódio que a sustentasse, descartada(s) pelo sistema.)`] : []),
+  ].join('\n\n') : 'Nenhuma sugestão desta semana se sustentou nos episódios do diário. Prefiro não propor nada a propor achismo.');
+
+  const r = {
+    id, numero: Number(id.replace(/-/g, '')), quando: agora(), semana: p.resumo.dias,
+    backlog: retomar.passaram, arquivar: arquivar.passaram, sugestoes: sug.passaram,
+    descartadas: { backlog: retomar.caidas.length + arquivar.caidas.length, sugestoes: sug.caidas },
+    resumo: p.resumo, status: 'aberta',
+  };
+  await destino.gravaReuniao(r).catch((e) => log(`reunião não gravou: ${e.message}`));
+  await escreve(A.diretor, 'encerrou a reunião', [
+    `${r.backlog.length} temas no backlog da semana que vem e ${r.sugestoes.length} sugestão(ões) para o Rubens decidir.`,
+    'Nada disso muda a bancada sozinho: ele aceita ou descarta no painel.',
+    '', 'Bom fim de semana. Segunda às 7h a gente volta.',
+  ].join('\n'));
+  log(`reunião ${id}: ${r.backlog.length} no backlog, ${r.sugestoes.length} sugestões, ${r.descartadas.sugestoes.length} descartadas`);
+  return r;
+}
+
 /* ---------- o turno ---------- */
 const fim = Date.now() + DURACAO_MIN * 60000;
 log(`turno de ${DURACAO_MIN} min, ${CPS} letras/s, destino ${destino.nome}`);
@@ -629,6 +722,12 @@ while (Date.now() < fim - 20 * 60000 * FATOR) {
       const aviso = { modo: 'fimdesemana', aviso: 'A bancada descansa no fim de semana. Volta segunda às 7h.', acao: 'fim de semana' };
       const pedidoFds = await proximoPedido();
       if (pedidoFds) { await fazPedido(pedidoFds, aviso); feitos++; continue; }
+      // a reunião: sábado, dentro do expediente, uma vez só por fim de semana
+      const sabado = sabadoDaSemana();
+      if (diaSP() === 6 && noExpediente() && !(await destino.reuniao(sabado).catch(() => null))) {
+        await fazReuniao(sabado);
+        continue;
+      }
       await avisoPublico(aviso.modo, aviso.aviso, aviso.acao);
       await dorme(5 * 60);
       continue;
@@ -700,7 +799,15 @@ while (Date.now() < fim - 20 * 60000 * FATOR) {
   }
   if (process.env.UM_DOCUMENTO) break;
 }
-E = novoEstado();
-E.atual = { agente: 'Diretor', id: 'diretor', acao: 'troca de turno', texto: '', pensando: true, inicio: agora() };
-await publica();
+/* O fim do turno. No fim de semana a tela NÃO pode voltar para o modo público:
+   o vigia lê a lista fechada de motivos, não acharia "publico" nela, veria um
+   estado parado em horário de expediente e religaria o turno. O painel do
+   administrador mostraria "travada há N min" o sábado inteiro, por nada. */
+if (fimDeSemana()) {
+  await avisoPublico('fimdesemana', 'A bancada descansa no fim de semana. Volta segunda às 7h.', 'fim de semana');
+} else {
+  E = novoEstado();
+  E.atual = { agente: 'Diretor', id: 'diretor', acao: 'troca de turno', texto: '', pensando: true, inicio: agora() };
+  await publica();
+}
 log(`turno encerrado: ${feitos} documento(s)`);
