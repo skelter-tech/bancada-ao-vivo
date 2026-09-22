@@ -3,7 +3,7 @@
 //
 //   1. a bancada está trabalhando?          nada a fazer
 //   2. está parada por um motivo conhecido? (folga, pauta do dia, cota, modo
-//      privado) registra e não mexe
+//      privado, fim de semana) registra e não mexe
 //   3. está travada em horário de expediente? religa o turno
 //
 // O que ele vê fica gravado em vigia/estado, e o administrador lê isso no /admin/.
@@ -28,8 +28,14 @@ const idade = estado?.atualizado ? (agora - Date.parse(estado.atualizado)) / 600
 const m = minutoSP();
 const expediente = m >= 7 * 60 && m < 23 * 60 + 50;
 
+// Esta lista é fechada de propósito, e é ela que separa "parada de propósito" de
+// "travada". Um modo que o motor use e que não esteja aqui cai no galho de baixo,
+// vira "travada há N min" e o vigia religa o turno por cima de uma parada que era
+// para acontecer. Modo novo no motor entra aqui na mesma mudança.
 const MOTIVO = {
   folga: 'de folga, volta às 7h',
+  reuniao: 'em reunião de fim de semana',
+  fimdesemana: 'descansando, volta segunda às 7h',
   pauta: 'o Diretor está montando a pauta do dia',
   cota: 'esperando a cota gratuita renovar',
   privado: 'num pedido do administrador',
