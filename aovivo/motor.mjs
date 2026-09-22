@@ -516,10 +516,25 @@ async function montaDocumento({ tema, area, doc: bruto, fontes, imagem, pedido }
      05h às 06h  o Diretor monta a pauta do dia (comitê, no repositório privado)
      06h às 07h  pedidos "pode esperar" do administrador; se não der tempo, tudo bem
      07h         volta o ao vivo, em ponto
+   Pedido do Rubens em 22/09:
+     sábado e domingo a bancada não escreve pauta. No sábado, às 7h, ela se reúne
+     para organizar o backlog da semana e avaliar a própria ferramenta; o resto do
+     fim de semana é descanso. Pedido do administrador continua rodando.
    Pedido "para hoje" roda a qualquer hora: é urgente por definição.
    Documento público novo não começa depois das 23h40, para a bancada não entrar
    na folga no meio de um texto. */
 const minutoSP = () => { const [h, m] = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()).split(':').map(Number); return (h % 24) * 60 + m; };
+// 0 domingo … 6 sábado, no fuso de São Paulo
+const DIAS = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const diaSP = () => DIAS[new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short' }).format(new Date())];
+const fimDeSemana = () => diaSP() === 0 || diaSP() === 6;
+// O sábado deste fim de semana, que é o nome da reunião: no sábado é hoje, no
+// domingo é ontem. Meio-dia UTC para subtrair dias sem esbarrar em fuso.
+function sabadoDaSemana() {
+  const d = new Date(`${hoje()}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((diaSP() + 1) % 7));
+  return d.toISOString().slice(0, 10);
+}
 const noExpediente = () => { const m = minutoSP(); return m >= 7 * 60 && m < 23 * 60 + 40; };
 const horaDosPedidos = () => { const m = minutoSP(); return m >= 6 * 60 && m < 7 * 60; };
 const segundosAteAs7 = () => { const m = minutoSP(); return m < 7 * 60 ? (7 * 60 - m) * 60 : Infinity; };
@@ -605,6 +620,17 @@ while (Date.now() < fim - 20 * 60000 * FATOR) {
       await avisoPublico('lanche', avisoLanche, 'hora do lanche');
       log('pausa do administrador, bancada no lanche');
       await dorme(60);
+      continue;
+    }
+
+    /* Fim de semana: a produção de pauta para. O que continua é o pedido do
+       administrador, porque ele é trabalho dele, não da bancada. */
+    if (fimDeSemana()) {
+      const aviso = { modo: 'fimdesemana', aviso: 'A bancada descansa no fim de semana. Volta segunda às 7h.', acao: 'fim de semana' };
+      const pedidoFds = await proximoPedido();
+      if (pedidoFds) { await fazPedido(pedidoFds, aviso); feitos++; continue; }
+      await avisoPublico(aviso.modo, aviso.aviso, aviso.acao);
+      await dorme(5 * 60);
       continue;
     }
 
