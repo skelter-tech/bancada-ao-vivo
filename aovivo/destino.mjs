@@ -11,7 +11,9 @@
 //   controle/urgente     o pedido "para hoje" que faz a bancada parar na hora
 //   controle/diretor     o Diretor montando a pauta do dia (escrito pelo comitê)
 //   controle/pausa       o administrador parou a bancada (lanche na tela pública)
-import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
+//   diario/{data}        o que deu errado naquele dia, um documento por dia
+//   reunioes/{sabado}    o que a bancada concluiu na reunião daquele fim de semana
+import { readFile, writeFile, mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { conectar } from '../src/firestore.mjs';
 
@@ -52,6 +54,12 @@ export function destinoFirestore(conta) {
     pausa: () => db.le('controle/pausa'),
     pedidos: () => db.listaPorNumero('pedidos', 40),
     atualizaPedido: (p) => db.grava(`pedidos/${p.id}`, p, comNumero(p.numero)),
+    diario: (data) => db.le(`diario/${data}`),
+    gravaDiario: (d) => db.grava(`diario/${d.data}`, d, comNumero(d.numero)),
+    // os últimos dias, do mais novo para o mais velho (é o que a reunião lê)
+    diasDoDiario: (n = 7) => db.listaPorNumero('diario', n),
+    reuniao: (id) => db.le(`reunioes/${id}`),
+    gravaReuniao: (r) => db.grava(`reunioes/${r.id}`, r, comNumero(r.numero)),
   };
 }
 
@@ -87,5 +95,13 @@ export function destinoArquivo(raiz) {
     pausa: () => le('pausa.json', null),
     async pedidos() { return (await le('pedidos.json', [])).sort((a, b) => b.numero - a.numero); },
     async atualizaPedido(p) { const l = await le('pedidos.json', []); await grava('pedidos.json', [...l.filter((x) => x.id !== p.id), p]); },
+    diario: (data) => le(`diario-${data}.json`, null),
+    gravaDiario: (d) => grava(`diario-${d.data}.json`, d),
+    async diasDoDiario(n = 7) {
+      const arqs = (await readdir(dir).catch(() => [])).filter((f) => /^diario-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort().reverse().slice(0, n);
+      return Promise.all(arqs.map((f) => le(f, null))).then((l) => l.filter(Boolean));
+    },
+    reuniao: (id) => le(`reuniao-${id}.json`, null),
+    gravaReuniao: (r) => grava(`reuniao-${r.id}.json`, r),
   };
 }

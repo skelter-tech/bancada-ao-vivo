@@ -21,6 +21,7 @@ import { parecido } from '../src/memoria.mjs';
 import { separa } from '../src/vault.mjs';
 import { lerEquipe } from '../bancada/equipe.mjs';
 import { destinoPadrao } from './destino.mjs';
+import { novoDiario, anota, marcasDoFiscal } from './diario.mjs';
 
 const RAIZ = join(import.meta.dirname, '..');
 // data e hora em São Paulo, sem importar o publicar.mjs, que arrastaria o comitê
@@ -52,6 +53,26 @@ const respiro = () => RESPIROS[Math.floor(Math.random() * RESPIROS.length)];
 const log = (m) => console.log(`${agora().slice(11, 19)} ${m}`);
 
 const destino = await destinoPadrao(RAIZ);
+
+/* ---------- o diário do dia ----------
+   Toda vez que o trabalho volta atrás, fica registrado. O turno carrega o diário
+   do dia ao começar, para um turno novo (ou religado pelo vigia) continuar a
+   lista em vez de apagá-la, e grava depois de cada anotação: se o processo cair,
+   perde-se no máximo o episódio em curso.
+   Dois turnos ao mesmo tempo se sobrescreveriam, mas o workflow só deixa um
+   rodar por vez, e um episódio perdido não estraga a contagem da semana. */
+let diario = (await destino.diario(hoje()).catch(() => null)) || novoDiario(hoje());
+if (!Array.isArray(diario.episodios)) diario = novoDiario(hoje());
+
+async function registra(tipo, dados = {}) {
+  try {
+    if (diario.data !== hoje()) diario = novoDiario(hoje());
+    if (anota(diario, tipo, dados)) await destino.gravaDiario(diario);
+  } catch (e) {
+    // o diário é observação, não produção: se ele falhar, a bancada segue
+    log(`diário não gravou (${tipo}): ${e.message}`);
+  }
+}
 
 /* ---------- o elenco do dia ----------
    Em alguns dias da semana uma cadeira troca de dono: um estagiário, um
@@ -275,7 +296,11 @@ async function umDocumento({ pedido = null } = {}) {
   // o Diretor propõe, o Pesquisador confere se há fonte; até três tentativas
   for (let tentativa = 0; tentativa < 3; tentativa++) {
     tema = pedido ? await temaDoPedido(pedido, tentativa) : await escolheTema(area, recentes, recusados);
-    if (tema.repetido) { recusados.push(tema.tema); continue; }
+    if (tema.repetido) {
+      recusados.push(tema.tema);
+      await registra('repetido', { tema: tema.tema, area: area.nome, parecido: tema.repetido, pedido: !!pedido });
+      continue;
+    }
     E.peca = { tema: tema.tema, area: area.nome, fontes: [] };
 
     await pensa(A.pesquisador, 'buscando fontes em notícias e artigos');
@@ -292,6 +317,10 @@ async function umDocumento({ pedido = null } = {}) {
     if (fontes.length < 3) {
       await escreve(A.pesquisador, 'recusou o tema', 'Menos de três fontes confiáveis. Não dá para sustentar um documento com isso. Diretor, outro recorte.');
       recusados.push(tema.tema);
+      await registra('sem_fonte', {
+        tema: tema.tema, area: area.nome, consulta_pt: tema.consulta_pt, consulta_en: tema.consulta_en,
+        achadas: fontes.length, descartadas: { fora_da_lista: r.naoConfiavel, nao_abriram: r.naoAbriu, sem_texto: r.semTexto }, pedido: !!pedido,
+      });
       continue;
     }
 
@@ -300,6 +329,7 @@ async function umDocumento({ pedido = null } = {}) {
     if (/^\W*N[ÃA]O SUSTENTA/i.test(apuracao)) {
       await escreve(A.pesquisador, 'recusou o tema', apuracao);
       recusados.push(tema.tema);
+      await registra('nao_sustenta', { tema: tema.tema, area: area.nome, consulta_pt: tema.consulta_pt, achadas: fontes.length, pedido: !!pedido });
       continue;
     }
     // fonte que o Pesquisador marcou como fora do tema sai antes de o Diretor
@@ -318,6 +348,7 @@ async function umDocumento({ pedido = null } = {}) {
     if (fontes.length < 3) {
       await escreve(A.pesquisador, 'recusou o tema', 'Tirando as fontes fora do tema, sobraram menos de três. Diretor, outro recorte.');
       recusados.push(tema.tema);
+      await registra('fora_do_tema', { tema: tema.tema, area: area.nome, consulta_pt: tema.consulta_pt, retiradas: [...fora], sobraram: fontes.length, pedido: !!pedido });
       apuracao = '';
       continue;
     }
@@ -334,6 +365,7 @@ async function umDocumento({ pedido = null } = {}) {
 
   if (!apuracao || /^\W*N[ÃA]O SUSTENTA/i.test(apuracao)) {
     await escreve(A.diretor, 'pausa', pedido ? 'Três buscas sem fonte suficiente para o pedido. Aviso o administrador.' : 'Três temas sem fonte suficiente. Pausa curta e recomeço com outro recorte.');
+    await registra('sem_tema', { area: area.nome, tentados: recusados, pedido: !!pedido });
     return { falhou: 'sem fonte suficiente em três buscas' };
   }
 
@@ -354,6 +386,7 @@ async function umDocumento({ pedido = null } = {}) {
   // publicada como documento 2.
   if (doc.length < 700 || /n[ãa]o (é|e) poss[íi]vel (elaborar|escrever|produzir)|n[ãa]o h[áa] como|envie|envi[áa]-las|forne[çc]a (mais|outras)/i.test(doc.slice(0, 600))) {
     await escreve(A.diretor, 'desistiu do tema', 'As fontes não sustentam um post inteiro sobre isso. Troco de tema.');
+    await registra('desistiu', { tema: tema.tema, area: area.nome, fontes: fontes.length, letras: doc.length, pedido: !!pedido });
     return { falhou: 'o Diretor não conseguiu escrever com essas fontes' };
   }
   await escreve(A.diretor, 'escreveu o post', doc);
@@ -385,6 +418,9 @@ async function umDocumento({ pedido = null } = {}) {
   ];
 
   let f = confere(doc);
+  // o que o fiscal achou ANTES de qualquer correção: se o documento sair, é isto
+  // que vira o episódio "corrigido", e é a contagem que mostra o que ele mais pega
+  const marcasDeEntrada = marcasDoFiscal(f);
   // pedido do administrador ganha uma rodada de revisão a mais
   const rodadas = qualidade ? 2 : 1;
   for (let i = 0; i < rodadas && problemas(f).length; i++) {
@@ -416,6 +452,7 @@ async function umDocumento({ pedido = null } = {}) {
   }
   if (problemas(f).length) {
     await escreve(FISCAL, 'barrou a publicação', ['O post não passou na conferência e não será publicado:', ...problemas(f).map((p) => `- ${p}`)].join('\n'));
+    await registra('barrado', { tema: tema.tema, area: area.nome, marcas: marcasDoFiscal(f), entrou_com: marcasDeEntrada, pedido: !!pedido });
     return { falhou: `barrado pelo fiscal: ${problemas(f).join(' ')}` };
   }
 
@@ -423,7 +460,10 @@ async function umDocumento({ pedido = null } = {}) {
   const imagem = await chama(A.designer, `Post:\n${doc.slice(0, 2600)}`);
   await escreve(A.designer, 'imagem', imagem);
 
-  return montaDocumento({ tema, area, doc, fontes, imagem, pedido });
+  const pronto = await montaDocumento({ tema, area, doc, fontes, imagem, pedido });
+  if (marcasDeEntrada.length) await registra('corrigido', { tema: tema.tema, area: area.nome, marcas: marcasDeEntrada, numero: pronto.numero, pedido: !!pedido });
+  await registra('publicado', { tema: tema.tema, area: area.nome, numero: pronto.numero, titulo: pronto.titulo, fontes: fontes.length, pedido: !!pedido });
+  return pronto;
 }
 
 /* ---------- o documento publicado ----------
@@ -606,6 +646,7 @@ while (Date.now() < fim - 20 * 60000 * FATOR) {
     if (e.semCota) {
       // a cota volta sozinha: fica esperando dentro do turno, tentando de tempos em tempos
       log('cota gratuita do dia esgotada, esperando');
+      await registra('sem_cota', {});
       await avisoPublico('cota', 'A cota gratuita de IA acabou por agora. A bancada volta sozinha quando ela renovar.', 'esperando a cota renovar');
       await dorme(20 * 60);
       liberaCotas();
