@@ -53,7 +53,12 @@ jobs:
           # pelo github.com e rode o workflow na mão. Existe porque a pausa do
           # administrador (o lanche) só vale entre documentos e depende do
           # Firestore: quando o que está saindo está errado, é preciso parar agora.
-          if [ -f PAUSADA ]; then echo "PAUSADA na raiz: a bancada está parada de propósito"; cat PAUSADA; exit 0; fi
+          if [ -f PAUSADA ]; then
+            echo "PAUSADA na raiz: a bancada está parada de propósito"; cat PAUSADA
+            # a tela não pode ficar congelada no último passo do turno anterior
+            node aovivo/avisa-pausa.mjs || true
+            exit 0
+          fi
           # sem o Firestore o trabalho não aparece em lugar nenhum: não gasta cota à toa
           if [ -z "$FIREBASE_CONTA" ]; then echo "FIREBASE_CONTA ausente, turno não roda"; exit 0; fi
           node aovivo/motor.mjs

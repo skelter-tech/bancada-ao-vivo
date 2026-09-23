@@ -1,11 +1,11 @@
-Parada em 23/09/2026: o formato vai mudar.
+Trabalhando em Melhorias, leia nosso Blog
 
-O elenco jornalístico (Diretor, Pesquisador, Auditor) não deveria ter vindo
-junto para as bancadas por tema. Os especialistas foram vestidos nas cadeiras
-antigas em vez de substituí-las, e o resultado é dois elencos sobrepostos: o
-Recrutamento faz a função do Pesquisador e fala "Diretor, outro recorte".
+(A primeira linha deste arquivo é o que aparece na tela pública. Trocar o aviso
+é editar essa linha aqui pelo github.com e salvar: o próximo turno já mostra.)
 
-Enquanto o formato novo não entra, a bancada fica parada em vez de publicar no
-formato errado.
+Por que está parada, 23/09/2026: o elenco jornalístico (Diretor, Pesquisador,
+Auditor) não deveria ter vindo junto para as bancadas por tema. Os especialistas
+foram vestidos nas cadeiras antigas em vez de substituí-las, e o resultado eram
+dois elencos sobrepostos. O formato novo está sendo escrito.
 
 Para voltar: apague este arquivo e rode o workflow "Turno da bancada" na mão.

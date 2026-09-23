@@ -36,6 +36,9 @@ const MOTIVO = {
   folga: 'de folga, volta às 7h',
   reuniao: 'em reunião de fim de semana',
   pautasemana: 'montando a pauta da semana',
+  // o formato do trabalho está sendo refeito: pode ficar 24 horas assim, e isso
+  // NÃO é travada. Enquanto este modo estiver no estado, o vigia não religa nada.
+  melhorias: 'parada para melhorias, pode passar 24 horas assim',
   fimdesemana: 'descansando, volta segunda às 7h',
   pauta: 'o Diretor está montando a pauta do dia',
   cota: 'esperando a cota gratuita renovar',
