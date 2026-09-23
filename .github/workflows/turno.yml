@@ -21,8 +21,9 @@ concurrency:
 jobs:
   turno:
     runs-on: ubuntu-latest
-    # o limite do GitHub é 6 horas; o motor para de pegar trabalho novo 20 minutos
-    # antes do fim do turno, então 330 de turno cabem com folga em 350
+    # o limite do GitHub é 6 horas; o motor para de pegar trabalho novo 40 minutos
+    # antes do fim do turno (MARGEM_FIM_MIN), o bastante para o documento em curso
+    # terminar, então 330 de turno cabem com folga em 350
     timeout-minutes: 350
     steps:
       # histórico inteiro: é pela data do último sinal de vida que se decide o próximo

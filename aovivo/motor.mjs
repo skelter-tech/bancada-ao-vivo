@@ -36,16 +36,23 @@ for (const l of (await readFile(join(RAIZ, '.env'), 'utf8').catch(() => '')).spl
 process.env.SO_GROQ = '1';
 
 /* ---------- ritmo ----------
-   20 letras por segundo: umas três a quatro vezes a velocidade de uma pessoa
-   digitando, devagar o bastante para acompanhar lendo. */
-const CPS = Number(process.env.CPS) || 20;
+   8 letras por segundo. Eram 20, que dá umas 240 palavras por minuto: o limite
+   de leitura de um adulto, ou seja, quem assistia só conseguia acompanhar sem
+   nenhuma folga. A 8 são ~96 palavras por minuto, abaixo da leitura, e dá para
+   ler pensando em vez de correr atrás.
+
+   Pedido do Rubens em 23/09: "se demorar 1 hora e ficar bom tá ótimo". O tempo
+   foi gasto DENTRO do documento e não no vão entre documentos, porque tela
+   parada não é espetáculo: um documento passou de 12 para 25 minutos de tela,
+   e o silêncio entre eles encolheu. */
+const CPS = Number(process.env.CPS) || 8;
 const DURACAO_MIN = Number(process.env.DURACAO_MIN) || 50;
 // TESTE_RAPIDO encurta só as esperas, para conferir o fluxo; as chamadas são reais
 const FATOR = process.env.TESTE_RAPIDO ? 0.03 : 1;
 const RESPIROS = [7, 11, 13, 17];
-/* Minutos entre o começo de um documento e o do próximo, para a cota de tokens do
-   Groq durar o expediente inteiro. Os 13 originais foram calibrados para o custo
-   de antes da mesa.
+/* Minutos entre o começo de um documento e o do próximo, contados do início de
+   um ao início do outro. Como o documento em si passou a levar uns 25 minutos de
+   tela, os 35 daqui deixam um vão de uns 10 minutos, menor que o de antes.
 
    Medido em 23/09 com o mesmo pipeline dos dois lados: sem mesa, 5 chamadas e
    3.248 tokens de entrada por documento; com a mesa de cinco vozes conversando
@@ -53,11 +60,18 @@ const RESPIROS = [7, 11, 13, 17];
    versão da mesa: ali eram quatro monólogos paralelos, e aqui cada um recebe o
    que os anteriores disseram, então a conversa cresce enquanto anda.
 
-   O compasso sobe na mesma proporção (13 x 1,68). Sem isso a cota acabaria no
-   meio da tarde e a bancada passaria o fim do dia parada esperando renovar, que
-   é um espetáculo pior do que um ritmo mais lento. Para voltar atrás é só a
-   variável INTERVALO_MIN no ambiente. */
-const INTERVALO_MIN = Number(process.env.INTERVALO_MIN) || 22;
+   Serve também à cota: a 35 minutos cabem umas 29 peças nas 17 horas de
+   expediente, o que deixa folga nos 200 mil tokens por dia de cada modelo do
+   Groq. Para mexer, a variável INTERVALO_MIN no ambiente. */
+const INTERVALO_MIN = Number(process.env.INTERVALO_MIN) || 35;
+
+/* Quanto antes do fim do turno o motor para de PEGAR trabalho novo. Eram 20
+   minutos, calibrados para documento de 12; com 25 minutos de documento, um
+   começado no limite terminaria perto demais do corte de 6 horas do GitHub, e
+   um documento cortado no meio deixa a tela congelada.
+   Sair mais cedo não custa nada: o turno seguinte é chamado na hora em que este
+   termina, então adiantar a saída só adianta o próximo. */
+const MARGEM_FIM_MIN = Number(process.env.MARGEM_FIM_MIN) || 40;
 let inicioDoDocumento = 0;
 const LIMITE_POST = 2800;
 const ECO_MESA = Number(process.env.ECO_MESA) || ECO_PADRAO;
@@ -841,10 +855,13 @@ async function fazReuniao(id) {
 /* ---------- o turno ---------- */
 const fim = Date.now() + DURACAO_MIN * 60000;
 log(`turno de ${DURACAO_MIN} min, ${CPS} letras/s, destino ${destino.nome}`);
+// turno mais curto que a margem do fim não pega trabalho nenhum, e sem este aviso
+// isso sai como um turno que rodou, não fez nada e não disse por quê
+if (DURACAO_MIN <= MARGEM_FIM_MIN) log(`ATENÇÃO: turno de ${DURACAO_MIN} min é menor que a margem de fim (${MARGEM_FIM_MIN} min), nenhum documento será começado`);
 if (elenco.troca) log(`elenco de hoje: ${elenco.troca.nome} no lugar do titular de ${elenco.troca.substitui}`);
 let feitos = 0;
 
-while (Date.now() < fim - 20 * 60000 * FATOR) {
+while (Date.now() < fim - MARGEM_FIM_MIN * 60000 * FATOR) {
   // virou o dia: o elenco pode ter mudado
   if (hoje() !== diaDoElenco) {
     elenco = await elencoDoDia(); diaDoElenco = hoje();
