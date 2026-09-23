@@ -13,6 +13,7 @@
 //   controle/pausa       o administrador parou a bancada (lanche na tela pública)
 //   diario/{data}        o que deu errado naquele dia, um documento por dia
 //   reunioes/{sabado}    o que a bancada concluiu na reunião daquele fim de semana
+//   pautas/{domingo}     os temas que os cabeças deixaram prontos para a semana
 import { readFile, writeFile, mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { conectar } from '../src/firestore.mjs';
@@ -60,6 +61,8 @@ export function destinoFirestore(conta) {
     diasDoDiario: (n = 7) => db.listaPorNumero('diario', n),
     reuniao: (id) => db.le(`reunioes/${id}`),
     gravaReuniao: (r) => db.grava(`reunioes/${r.id}`, r, comNumero(r.numero)),
+    pautaSemana: (id) => db.le(`pautas/${id}`),
+    gravaPautaSemana: (p) => db.grava(`pautas/${p.id}`, p, comNumero(p.numero)),
   };
 }
 
@@ -103,5 +106,7 @@ export function destinoArquivo(raiz) {
     },
     reuniao: (id) => le(`reuniao-${id}.json`, null),
     gravaReuniao: (r) => grava(`reuniao-${r.id}.json`, r),
+    pautaSemana: (id) => le(`pauta-${id}.json`, null),
+    gravaPautaSemana: (p) => grava(`pauta-${p.id}.json`, p),
   };
 }

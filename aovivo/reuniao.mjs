@@ -114,7 +114,7 @@ export function filtraBacklog(itens, recusadas) {
   const passaram = []; const caidas = [];
   for (const i of itens || []) {
     const ep = String(i.episodio || '').trim();
-    if (porId.has(ep)) passaram.push({ ...i, episodio: ep, original: porId.get(ep).tema, tipo: porId.get(ep).tipo, dia: porId.get(ep).dia });
+    if (porId.has(ep)) passaram.push({ ...i, episodio: ep, original: porId.get(ep).tema, tipo: porId.get(ep).tipo, dia: porId.get(ep).dia, area: porId.get(ep).area || '' });
     else caidas.push({ ...i, motivo: 'episódio não está entre os temas recusados da semana' });
   }
   return { passaram, caidas };

@@ -23,6 +23,7 @@ import { lerEquipe } from '../bancada/equipe.mjs';
 import { destinoPadrao } from './destino.mjs';
 import { novoDiario, anota, marcasDoFiscal } from './diario.mjs';
 import { pauta, filtraBacklog, filtraSugestoes, SCHEMA_BACKLOG, SCHEMA_SUGESTOES } from './reuniao.mjs';
+import { filtraPautas, proximaPauta, marcaUsada, backlogDaArea, quantoSobrou, domingoDaSemana, SCHEMA_PAUTAS, POR_AREA } from './pautas.mjs';
 import { leEspecialistas, confereBancadas, montaBancada, temSubstancia, ECO_PADRAO } from './bancadas.mjs';
 
 const RAIZ = join(import.meta.dirname, '..');
@@ -379,10 +380,14 @@ async function umDocumento({ pedido = null } = {}) {
   if (banca) log(`bancada de ${area.nome}: ${Object.values(banca.agentes).map((x) => x.nome).join(', ')}`);
   const recusados = [];
   let tema; let fontes = []; let apuracao = '';
+  // o tema que o cabeça da área deixou pronto no domingo, se a fila ainda tiver
+  const daFila = pedido ? null : await pegaDaFila(area, recentes);
 
   // o Diretor propõe, o Pesquisador confere se há fonte; até três tentativas
   for (let tentativa = 0; tentativa < 3; tentativa++) {
-    tema = pedido ? await temaDoPedido(pedido, tentativa) : await escolheTema(area, recentes, recusados);
+    tema = pedido ? await temaDoPedido(pedido, tentativa)
+      : (tentativa === 0 && daFila) ? daFila
+      : await escolheTema(area, recentes, recusados);
     if (tema.repetido) {
       recusados.push(tema.tema);
       await registra('repetido', { tema: tema.tema, area: area.nome, parecido: tema.repetido, pedido: !!pedido });
@@ -700,6 +705,8 @@ function sabadoDaSemana() {
   d.setUTCDate(d.getUTCDate() - ((diaSP() + 1) % 7));
   return d.toISOString().slice(0, 10);
 }
+// O nome da fila desta semana. A conta mora em pautas.mjs, com teste.
+const domingoDaFila = () => domingoDaSemana(hoje(), diaSP());
 const noExpediente = () => { const m = minutoSP(); return m >= 7 * 60 && m < 23 * 60 + 40; };
 const horaDosPedidos = () => { const m = minutoSP(); return m >= 6 * 60 && m < 7 * 60; };
 const segundosAteAs7 = () => { const m = minutoSP(); return m < 7 * 60 ? (7 * 60 - m) * 60 : Infinity; };
@@ -852,6 +859,121 @@ async function fazReuniao(id) {
   return r;
 }
 
+/* ---------- a pauta da semana ----------
+   Domingo de manhã. O sábado olhou para trás; este é o olhar para a frente, e
+   quem faz é outra gente: no sábado a equipe titular lê o diário da casa inteira,
+   no domingo é o cabeça de cada tema, que é quem sabe o que vale a pena naquele
+   assunto. A CTO monta Programação e Dados, a CISO monta Cibersegurança, o
+   Diretor de Supply Chain monta Varejo, a Diretora de RH monta Carreira.
+
+   O que sai daqui é uma fila, e fila não é ordem de serviço: a semana só começa
+   pelo que está nela enquanto ela durar. Vazia ou acabada, a segunda-feira
+   funciona como funcionava antes de isto existir. */
+async function fazPautaDaSemana(id) {
+  const reuniao = await destino.reuniao(sabadoDaSemana()).catch(() => null);
+  const recentes = await destino.temasRecentes(200).catch(() => []);
+
+  await avisoPublico('pautasemana', 'Domingo de manhã: os cabeças de cada tema estão montando a pauta da semana.', 'pauta da semana');
+  E = novoEstado();
+  E.modo = 'pautasemana';
+  E.aviso = 'Domingo de pauta: a semana que vem sendo montada';
+
+  A = TITULARES;
+  await escreve(A.diretor, 'abriu a pauta da semana', [
+    'Hoje não escrevemos documento. Cada um de vocês vai deixar a pauta da sua área pronta para a semana.',
+    reuniao?.backlog?.length
+      ? `A reunião de ontem devolveu ${reuniao.backlog.length} tema(s) que valem outra tentativa. Quem for da área, reaproveite com o recorte consertado.`
+      : 'Não há backlog de ontem para reaproveitar: a pauta sai do zero.',
+    '', `No máximo ${POR_AREA} temas por área. Tema repetido o sistema corta aqui mesmo, antes de virar fila.`,
+  ].join('\n'));
+
+  const itens = []; const caidas = [];
+  for (const area of AREAS_ATIVAS) {
+    // numero 0: cada tema tem um cabeça só, então o rodízio devolve sempre ele
+    sentaBancada(area, 0);
+    const cabeca = A.diretor;
+    const backlog = backlogDaArea(reuniao, area.nome);
+
+    await pensa(cabeca, `montando a pauta de ${area.nome}`);
+    let p;
+    try {
+      p = await chama(cabeca, [
+        `Amanhã começa a semana. Você responde por **${area.nome}** e está montando a pauta da sua área.`,
+        `A área é: ${area.foco}.`,
+        area.regra ? `\nA regra desta área: ${area.regra}` : '',
+        '',
+        `Escolha até ${POR_AREA} temas para a bancada escrever nos próximos dias. Um tema por assunto: não desdobre o mesmo assunto em variações.`,
+        'Sem nome de empresa. Cada tema precisa ter chance real de ter fonte pública e confiável nesta semana.',
+        '', REGRA_BUSCA,
+        recentes.length ? `\nTemas já publicados, NÃO repita nem chegue perto:\n${recentes.slice(-45).map((r) => `- ${r}`).join('\n')}` : '',
+        backlog.length ? `\nTemas que a bancada tentou nesta semana e não conseguiu escrever. A reunião de ontem disse que valem outra tentativa; pegue os que você acha que valem e conserte o recorte:\n${backlog.map((b) => `- ${b.tema} (${b.porque})`).join('\n')}` : '',
+      ].join('\n'), SCHEMA_PAUTAS);
+    } catch (err) {
+      // uma área que falhe não derruba as outras: a fila sai menor, e menor é
+      // melhor que nenhuma
+      if (err.semCota) throw err;
+      log(`pauta de ${area.nome} falhou: ${err.message}`);
+      continue;
+    }
+
+    const f = filtraPautas(p.pautas, { recentes, jaAceitos: itens, area: area.nome, bancada: area.bancada, cabeca: cabeca.nome });
+    itens.push(...f.passaram); caidas.push(...f.caidas);
+
+    await escreve(cabeca, `fechou a pauta de ${area.nome}`, [
+      f.passaram.length
+        ? f.passaram.map((x, n) => `${n + 1}. ${x.tema}\n   ${x.porque}`).join('\n\n')
+        : 'Não fechei tema nenhum que se sustentasse. Prefiro entregar a área vazia a entregar repetição.',
+      ...(f.caidas.length ? ['', `(${f.caidas.length} descartado(s) pelo sistema: ${[...new Set(f.caidas.map((c) => c.motivo))].join('; ')}.)`] : []),
+    ].join('\n'));
+  }
+
+  A = TITULARES;
+  const fila = {
+    id, numero: Number(id.replace(/-/g, '')), quando: agora(),
+    itens, descartadas: caidas.length, sabado: reuniao?.id || null,
+  };
+  await destino.gravaPautaSemana(fila).catch((e) => log(`pauta da semana não gravou: ${e.message}`));
+
+  await escreve(A.diretor, 'fechou a pauta da semana', itens.length ? [
+    `${itens.length} temas na fila da semana, ${caidas.length} descartado(s) pelo sistema.`,
+    ...AREAS_ATIVAS.map((a) => `- ${a.nome}: ${itens.filter((i) => i.area === a.nome).length}`),
+    '', 'Isto não é ordem de serviço: se um tema envelhecer durante a semana, quem estiver na cadeira escolhe outro na hora.',
+    '', 'Segunda às 7h a gente começa por aqui.',
+  ].join('\n') : 'A fila saiu vazia: nada do que foi proposto hoje passou nas travas. Segunda-feira o Diretor escolhe na hora, como antes.');
+
+  log(`pauta da semana ${id}: ${itens.length} temas, ${caidas.length} descartados`);
+  return fila;
+}
+
+/* O tema que o cabeça da área deixou pronto no domingo. Devolve null quando a
+   fila acabou, e aí o Diretor escolhe na hora.
+
+   A fila não escapa da trava de repetição: um tema montado no domingo pode ter
+   ficado parecido com algo publicado na terça, e nesse caso ele cai aqui do mesmo
+   jeito que cairia se tivesse sido escolhido agora. */
+async function pegaDaFila(area, recentes) {
+  if (!area?.nome) return null;
+  const fila = await destino.pautaSemana(domingoDaFila()).catch(() => null);
+  const item = proximaPauta(fila, area.nome);
+  if (!item) return null;
+
+  marcaUsada(fila, item.id);
+  await destino.gravaPautaSemana(fila).catch((e) => log(`fila da semana não gravou: ${e.message}`));
+
+  const repetido = recentes.find((r) => parecido(r, item.tema) >= 0.45);
+  if (repetido) {
+    log(`pauta da semana "${item.tema}" envelheceu (parecida com "${repetido}"), descartada`);
+    await registra('repetido', { tema: item.tema, area: area.nome, parecido: repetido, daFila: true });
+    return null;
+  }
+
+  await escreve(A.diretor, 'pegou o tema da pauta da semana', [
+    `${item.tema}`, '', item.porque, '',
+    `(Da pauta que ${item.cabeca} montou no domingo. Sobram ${quantoSobrou(fila, area.nome)} temas desta área na fila.)`,
+  ].join('\n'));
+  return item;
+}
+
 /* ---------- o turno ---------- */
 const fim = Date.now() + DURACAO_MIN * 60000;
 log(`turno de ${DURACAO_MIN} min, ${CPS} letras/s, destino ${destino.nome}`);
@@ -894,6 +1016,12 @@ while (Date.now() < fim - MARGEM_FIM_MIN * 60000 * FATOR) {
       const sabado = sabadoDaSemana();
       if (diaSP() === 6 && noExpediente() && !(await destino.reuniao(sabado).catch(() => null))) {
         await fazReuniao(sabado);
+        continue;
+      }
+      // domingo: os cabeças de cada tema montam a pauta da semana, uma vez só
+      const domingo = domingoDaFila();
+      if (diaSP() === 0 && noExpediente() && !(await destino.pautaSemana(domingo).catch(() => null))) {
+        await fazPautaDaSemana(domingo);
         continue;
       }
       await avisoPublico(aviso.modo, aviso.aviso, aviso.acao);

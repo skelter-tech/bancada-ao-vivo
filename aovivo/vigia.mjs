@@ -35,6 +35,7 @@ const expediente = m >= 7 * 60 && m < 23 * 60 + 50;
 const MOTIVO = {
   folga: 'de folga, volta às 7h',
   reuniao: 'em reunião de fim de semana',
+  pautasemana: 'montando a pauta da semana',
   fimdesemana: 'descansando, volta segunda às 7h',
   pauta: 'o Diretor está montando a pauta do dia',
   cota: 'esperando a cota gratuita renovar',
