@@ -23,7 +23,7 @@ import { lerEquipe } from '../bancada/equipe.mjs';
 import { destinoPadrao } from './destino.mjs';
 import { novoDiario, anota, marcasDoFiscal } from './diario.mjs';
 import { pauta, filtraBacklog, filtraSugestoes, SCHEMA_BACKLOG, SCHEMA_SUGESTOES } from './reuniao.mjs';
-import { leEspecialistas, confereBancadas, montaBancada } from './bancadas.mjs';
+import { leEspecialistas, confereBancadas, montaBancada, temSubstancia, ECO_PADRAO } from './bancadas.mjs';
 
 const RAIZ = join(import.meta.dirname, '..');
 // data e hora em São Paulo, sem importar o publicar.mjs, que arrastaria o comitê
@@ -45,14 +45,22 @@ const FATOR = process.env.TESTE_RAPIDO ? 0.03 : 1;
 const RESPIROS = [7, 11, 13, 17];
 /* Minutos entre o começo de um documento e o do próximo, para a cota de tokens do
    Groq durar o expediente inteiro. Os 13 originais foram calibrados para o custo
-   de antes da mesa; medido em 23/09, a mesa acrescentou 4 chamadas e 25% de
-   entrada por documento, então o compasso subiu na mesma proporção. Sem isso a
-   cota acabaria por volta das 17h e a bancada passaria o fim do dia parada
-   esperando ela renovar, que é um espetáculo pior do que um ritmo mais lento.
-   Para voltar atrás é só a variável INTERVALO_MIN no ambiente. */
-const INTERVALO_MIN = Number(process.env.INTERVALO_MIN) || 17;
+   de antes da mesa.
+
+   Medido em 23/09 com o mesmo pipeline dos dois lados: sem mesa, 5 chamadas e
+   3.248 tokens de entrada por documento; com a mesa de cinco vozes conversando
+   em sequência, 10 chamadas e 5.455. São 68% a mais, e não os 25% da primeira
+   versão da mesa: ali eram quatro monólogos paralelos, e aqui cada um recebe o
+   que os anteriores disseram, então a conversa cresce enquanto anda.
+
+   O compasso sobe na mesma proporção (13 x 1,68). Sem isso a cota acabaria no
+   meio da tarde e a bancada passaria o fim do dia parada esperando renovar, que
+   é um espetáculo pior do que um ritmo mais lento. Para voltar atrás é só a
+   variável INTERVALO_MIN no ambiente. */
+const INTERVALO_MIN = Number(process.env.INTERVALO_MIN) || 22;
 let inicioDoDocumento = 0;
 const LIMITE_POST = 2800;
+const ECO_MESA = Number(process.env.ECO_MESA) || ECO_PADRAO;
 
 const dorme = (s) => new Promise((ok) => setTimeout(ok, s * 1000 * FATOR));
 const agora = () => new Date().toISOString();
@@ -438,31 +446,67 @@ async function umDocumento({ pedido = null } = {}) {
   const listaFontes = blocoFontes(fontes, false);
 
   /* ---------- a mesa ----------
-     Pedido do Rubens em 23/09. Antes de o Diretor escrever, cada especialista do
-     tema lê a apuração e diz o que ELE vê ali. Não é uma cadeira do processo: é
-     a equipe conversando, e é o que faz o texto ter mais de um ângulo.
+     Pedido do Rubens em 23/09. Antes de o Diretor escrever, a equipe do tema lê
+     a apuração e conversa. Conversa mesmo: cada um recebe o que os anteriores
+     disseram e é obrigado a se posicionar sobre aquilo. Na primeira versão eram
+     quatro monólogos paralelos, e quatro ângulos compatíveis não dão atrito,
+     dão sopa: o Diretor recebia tudo encaixado e misturava.
 
      Lê a apuração, e não as fontes cruas, por duas razões: a apuração já é o que
      sobrou de relevante, e o trecho das fontes é o que mais pesa na cota do dia.
-     Cada fala é curta de propósito. Quem falhar fica calado: a mesa é para
-     enriquecer o texto, não para travar a produção. */
+     Quem falhar fica calado: a mesa é para enriquecer o texto, não para travar
+     a produção. */
+
+  // O corte seco é licença, não humor. Modelo mandado "ser ácido" produz piada
+  // ruim; modelo com uma lista fechada de gatilhos corta quando é para cortar.
+  const CORTE = [
+    'O corte seco: você pode cortar em UMA frase quando, e só quando, aparecer uma destas quatro coisas:',
+    '(a) alguém afirmou o que a apuração não sustenta;',
+    '(b) um número não fecha com outro número da apuração;',
+    '(c) promessa de fornecedor está sendo repetida como se fosse achado;',
+    '(d) a conclusão é grande demais para o tamanho da evidência.',
+    'O corte é sobre a afirmação, nunca sobre a pessoa, e não é ironia com quem falou. Não havendo nenhuma das quatro, NÃO corte: corte gratuito é pior que corte nenhum.',
+  ].join(' ');
+  const REGRAS_MESA = [
+    'Regras da mesa:',
+    '- Não resuma a apuração e não repita o que já foi dito. Quem repete não contribuiu.',
+    '- Não invente dado que não esteja na apuração.',
+    '- Diga se o achado vale no Brasil e o que muda se não valer.',
+    `- ${CORTE}`,
+    '- Português do Brasil, sem travessão.',
+  ].join('\n');
+
   const mesa = [];
   if (banca?.mesa?.length) {
-    for (const e of banca.mesa) {
-      const voz = { nome: e.nome, id: e.cadeira, cargo: e.cargo, modelo: A.diretor.modelo, temperatura: 0.75, papel: `Você é ${e.cargo.toLowerCase()} e está na reunião de pauta da bancada.\n\n${e.corpo}` };
+    for (const [i, e] of banca.mesa.entries()) {
+      const anteriores = mesa.length ? ['', '## O que já foi dito na mesa', ...mesa.map((m) => `**${m.cargo}:** ${m.fala}`)].join('\n') : '';
+      const voz = { nome: e.nome, id: e.cadeira, cargo: e.cargo, modelo: A.diretor.modelo, temperatura: 0.8, papel: `Você é ${e.cargo.toLowerCase()} e está na reunião de pauta da bancada.\n\n${e.corpo}` };
       // o robô daquela cadeira passa a usar o nome de quem está falando agora
       E.elenco = elencoParaTela().map((x) => (x.id === voz.id ? { ...x, nome: voz.nome, cargo: voz.cargo, especialista: true } : x));
-      await pensa(voz, 'lendo a apuração');
+      await pensa(voz, mesa.length ? 'ouvindo a mesa' : 'lendo a apuração');
       try {
+        const encargo = e.ultima
+          ? 'Você fala por último. Faça as três coisas do seu papel, nesta ordem: a pergunta, a palavra que travou, e o que você faria. Se a equipe conversou entre si e ninguém disse por que isso importa para quem está de fora, é isso que você fala.'
+          : mesa.length
+            ? 'Posicione-se sobre o que já foi dito: onde eles estão errados, onde estão confortáveis demais, ou o que todos deixaram passar. Concordar e acrescentar NÃO é contribuição; se você concorda com todos, diga o que todos deixaram passar. No máximo 4 frases.'
+            : 'Você abre a mesa. Em no máximo 4 frases, diga o que VOCÊ vê aqui que os outros não veriam: o ângulo da sua especialidade, o risco que ninguém citou, ou o que falta perguntar.';
         const fala = await chama(voz, [
           `A bancada vai escrever sobre: ${tema.tema}`,
           `Área: ${area.nome}.`, area.regra ? `Regra da área: ${area.regra}` : '',
           '', '## O que o apurador trouxe', apuracao,
-          '', 'Em no máximo 4 frases, diga o que VOCÊ vê aqui que os outros não veriam: o ângulo da sua especialidade, o risco que ninguém citou, ou o que falta perguntar.',
-          'Não resuma a apuração, não repita o que já está escrito e não invente dado que não esteja nela. Se não tem nada a acrescentar, diga isso em uma frase.',
+          anteriores,
+          '', encargo, '', REGRAS_MESA,
         ].join('\n'));
         const curta = semTravessao(String(fala).trim()).slice(0, 700);
-        if (curta.length > 20) { mesa.push({ nome: e.nome, cargo: e.cargo, fala: curta }); await escreve(voz, 'na mesa', curta); }
+        // A trava do atrito, por código: fala que só reescreve a apuração não é
+        // contribuição, é eco. O modelo promete não repetir e repete; quem
+        // confere é isto. Mesmo caminho da conferência de anatomia da imagem.
+        const eco = parecido(curta, apuracao);
+        if (curta.length <= 20) { log(`mesa: ${e.nome} veio vazio`); continue; }
+        if (eco >= ECO_MESA) { log(`mesa: ${e.nome} só parafraseou a apuração (${eco.toFixed(2)}), descartado`); continue; }
+        if (!temSubstancia(curta)) { log(`mesa: ${e.nome} concordou sem acrescentar, descartado`); continue; }
+        mesa.push({ nome: e.nome, cargo: e.cargo, fala: curta, ultima: !!e.ultima });
+        await escreve(voz, e.ultima ? 'a última palavra' : 'na mesa', curta);
       } catch (err) {
         log(`mesa: ${e.nome} ficou calado (${err.message})`);
         if (err.semCota) throw err;

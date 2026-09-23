@@ -20,7 +20,12 @@ import { separa } from '../src/vault.mjs';
 /* A composição de cada tema. O primeiro nome de cada cadeira é o titular; os
    seguintes entram por rodízio, pelo número do documento, para que todo mundo
    apareça ao longo da semana e nenhum documento fique igual ao anterior.
-   A mesa é a soma de todos, sem repetir. */
+   A mesa é a soma de todos, sem repetir, mais a Leitora.
+
+   A CISO dirige Cibersegurança em vez da CTO. No primeiro desenho a CTO dirigia
+   três dos cinco temas e assinava 6 de cada 10 documentos: bancada por tema
+   existe para variar a voz, e aquilo entregava a mesma voz na maioria dos
+   textos. Segurança também pede quem pensa em incidente, não em orçamento. */
 export const BANCADAS = {
   programacao: {
     diretor: ['cto'],
@@ -33,7 +38,7 @@ export const BANCADAS = {
     verificacao: ['dba'],
   },
   ciberseguranca: {
-    diretor: ['cto'],
+    diretor: ['ciso'],
     apuracao: ['secops'],
     verificacao: ['dev-senior', 'dba'],
   },
@@ -48,6 +53,31 @@ export const BANCADAS = {
     verificacao: ['pessoas', 'marketing'],
   },
 };
+
+/* Quanto uma fala da mesa pode parecer com a apuração antes de ser eco em vez de
+   contribuição. Calibrado em 23/09 contra textos escritos à mão: reescrita
+   literal deu 0.48, paráfrase disfarçada 0.26, e as contribuições de verdade
+   ficaram entre 0.03 e 0.09. O limiar fica no meio do vão, mais perto do lado
+   bom: melhor deixar passar um eco do que calar uma contribuição. */
+export const ECO_PADRAO = 0.18;
+
+/* A outra forma de não contribuir, que o eco não pega porque não repete palavra
+   nenhuma: a concordância vazia. "Concordo com os colegas, tema muito relevante"
+   deu 0.00 de semelhança e passaria limpo. Aqui ela é barrada pela abertura,
+   que é onde ela sempre aparece, e só quando a fala não traz número nem
+   contestação: quem concorda E acrescenta um dado continua valendo. */
+const CONCORDA = /^\W*(concordo|de acordo|exatamente|perfeito|isso mesmo|excelente ponto|ótimo ponto|otimo ponto|muito bem colocado|subscrevo|corroboro)\b/i;
+const CONTESTA = /\b(mas|porém|porem|entretanto|no entanto|errado|erro|não é|nao e|discordo|falta|faltou|ninguém|ninguem|cuidado|na verdade|contradiz)\b/i;
+export function temSubstancia(fala) {
+  if (!CONCORDA.test(String(fala))) return true;
+  return /\d/.test(fala) || CONTESTA.test(fala);
+}
+
+/* A Leitora está em todas as mesas e fala sempre por último. Ela não ocupa
+   cadeira nenhuma: as três cadeiras são de quem sabe do assunto, e a função dela
+   é justamente não saber. Sem ela, os 16 especialistas melhoram o que o texto
+   SABE e ninguém cuida de o texto ser lido até o fim. */
+export const LEITORA = 'leitora';
 
 export async function leEspecialistas(dir) {
   const fora = {};
@@ -64,6 +94,7 @@ export async function leEspecialistas(dir) {
 // a cadeira vazia no meio de um documento, e o erro apareceria longe da causa.
 export function confereBancadas(especialistas, bancadas = BANCADAS) {
   const faltando = [];
+  if (!especialistas[LEITORA]) faltando.push(`falta especialistas/${LEITORA}.md, que está em todas as mesas`);
   for (const [tema, b] of Object.entries(bancadas)) {
     for (const cadeira of ['diretor', 'apuracao', 'verificacao']) {
       if (!b[cadeira]?.length) faltando.push(`${tema}.${cadeira} está vazia`);
@@ -118,6 +149,10 @@ export function montaBancada({ tema, numero, titulares, especialistas, bancadas 
   const cadeiraDe = (id) => (b.diretor.includes(id) ? 'diretor' : b.apuracao.includes(id) ? 'pesquisador' : 'auditor');
   const naMesa = [...new Set([...b.diretor, ...b.apuracao, ...b.verificacao])]
     .map((id) => ({ ...especialistas[id], cadeira: cadeiraDe(id), ocupa: Object.entries(escolhidos).find(([, v]) => v === id)?.[0] || null }));
+
+  // por último, e sem cadeira própria: ela empresta a do Diretor, que é quem vai
+  // escrever e precisa ouvir a reclamação por último
+  if (especialistas[LEITORA]) naMesa.push({ ...especialistas[LEITORA], cadeira: 'diretor', ocupa: null, ultima: true });
 
   return { agentes, mesa: naMesa, escolhidos };
 }
