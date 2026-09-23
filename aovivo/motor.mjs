@@ -23,6 +23,7 @@ import { lerEquipe } from '../bancada/equipe.mjs';
 import { destinoPadrao } from './destino.mjs';
 import { novoDiario, anota, marcasDoFiscal } from './diario.mjs';
 import { pauta, filtraBacklog, filtraSugestoes, SCHEMA_BACKLOG, SCHEMA_SUGESTOES } from './reuniao.mjs';
+import { leEspecialistas, confereBancadas, montaBancada } from './bancadas.mjs';
 
 const RAIZ = join(import.meta.dirname, '..');
 // data e hora em São Paulo, sem importar o publicar.mjs, que arrastaria o comitê
@@ -42,9 +43,14 @@ const DURACAO_MIN = Number(process.env.DURACAO_MIN) || 50;
 // TESTE_RAPIDO encurta só as esperas, para conferir o fluxo; as chamadas são reais
 const FATOR = process.env.TESTE_RAPIDO ? 0.03 : 1;
 const RESPIROS = [7, 11, 13, 17];
-// minutos entre o começo de um documento e o do próximo, para a cota de tokens do
-// Groq durar o expediente inteiro
-const INTERVALO_MIN = Number(process.env.INTERVALO_MIN) || 13;
+/* Minutos entre o começo de um documento e o do próximo, para a cota de tokens do
+   Groq durar o expediente inteiro. Os 13 originais foram calibrados para o custo
+   de antes da mesa; medido em 23/09, a mesa acrescentou 4 chamadas e 25% de
+   entrada por documento, então o compasso subiu na mesma proporção. Sem isso a
+   cota acabaria por volta das 17h e a bancada passaria o fim do dia parada
+   esperando ela renovar, que é um espetáculo pior do que um ritmo mais lento.
+   Para voltar atrás é só a variável INTERVALO_MIN no ambiente. */
+const INTERVALO_MIN = Number(process.env.INTERVALO_MIN) || 17;
 let inicioDoDocumento = 0;
 const LIMITE_POST = 2800;
 
@@ -106,8 +112,26 @@ async function elencoDoDia() {
 
 let elenco = await elencoDoDia();
 let diaDoElenco = hoje();
-let A = Object.fromEntries([...elenco.equipe, elenco.diretor].map((a) => [a.id, a]));
-const elencoParaTela = () => [...elenco.equipe, elenco.diretor].map((a) => ({ id: a.id, nome: a.nome, titular: a.titular || a.nome, estagiario: !!a.estagiario, substituto: !!a.substituto }));
+// TITULARES é quem tem a cadeira; A é quem a está ocupando NESTE documento, que
+// muda com o tema. Antes as duas coisas eram a mesma, e por isso eram uma variável só.
+let TITULARES = Object.fromEntries([...elenco.equipe, elenco.diretor].map((a) => [a.id, a]));
+let A = TITULARES;
+
+const ESPECIALISTAS = await leEspecialistas(join(RAIZ, 'aovivo', 'especialistas'));
+// falha no arranque, e não no meio de um documento, se uma bancada citar alguém que não existe
+confereBancadas(ESPECIALISTAS);
+
+const elencoParaTela = () => Object.values(A).map((a) => ({ id: a.id, nome: a.nome, titular: a.titular || a.nome, cargo: a.cargo || '', estagiario: !!a.estagiario, substituto: !!a.substituto, especialista: !!a.especialista }));
+
+/* Quem senta neste documento. Tema com bancada própria troca as três cadeiras
+   pelos especialistas dele; tema sem bancada mantém os titulares. */
+function sentaBancada(area, numero) {
+  if (!area?.bancada) { A = TITULARES; return null; }
+  const b = montaBancada({ tema: area.bancada, numero, titulares: TITULARES, especialistas: ESPECIALISTAS });
+  if (!b) { A = TITULARES; return null; }
+  A = { ...TITULARES, ...b.agentes };
+  return b;
+}
 
 /* ---------- o palco ----------
    Público ou privado. No público, o que acontece vai para aovivo/estado e todo
@@ -168,15 +192,52 @@ const chama = (agente, prompt, schema = null) => gerar({ modelo: agente.modelo, 
 const letrasPara = (agente, curto) => (String(agente.modelo).trim().startsWith('gemini') ? curto * 3 : curto);
 const FISCAL = { nome: 'Fiscal', id: 'fiscal' };
 
-/* ---------- as quatro áreas ----------
+/* ---------- as áreas ----------
    Escolhida pelo código, em rodízio pelo número do documento: deixada ao modelo,
-   a bancada escreveu 14 de 15 documentos sobre IA. */
+   a bancada escreveu 14 de 15 documentos sobre IA.
+
+   "ativo" liga e desliga um tema sem apagá-lo. Em 23/09 os quatro primeiros
+   foram dormir por uma semana para arejar a pauta, e voltam ligando a marca de
+   novo: os 140 documentos já publicados neles continuam no blog, e o filtro por
+   tema continua funcionando.
+
+   "bancada" diz qual equipe senta neste tema (aovivo/bancadas.mjs). Tema sem
+   bancada usa a equipe titular, que é como a casa funcionava antes. */
 const AREAS = [
-  { nome: 'Tecnologia', foco: 'infraestrutura, software, telecom, chips, dados, nuvem, segurança digital, energia e hardware' },
-  { nome: 'Mundo corporativo', foco: 'gestão, trabalho, carreira, liderança, produtividade, governança, mercado e regulação que muda a vida das empresas, sempre com o ângulo de tecnologia ou transformação' },
-  { nome: 'Inteligência artificial', foco: 'modelos, uso em setores, regulação, trabalho, custos, riscos e pesquisa em IA' },
-  { nome: 'Inovação', foco: 'pesquisa aplicada, ciência, novos materiais, saúde, agro, indústria, cidades, startups (sem nome) e políticas de inovação' },
+  { nome: 'Tecnologia', ativo: false, foco: 'infraestrutura, software, telecom, chips, dados, nuvem, segurança digital, energia e hardware' },
+  { nome: 'Mundo corporativo', ativo: false, foco: 'gestão, trabalho, carreira, liderança, produtividade, governança, mercado e regulação que muda a vida das empresas, sempre com o ângulo de tecnologia ou transformação' },
+  { nome: 'Inteligência artificial', ativo: false, foco: 'modelos, uso em setores, regulação, trabalho, custos, riscos e pesquisa em IA' },
+  { nome: 'Inovação', ativo: false, foco: 'pesquisa aplicada, ciência, novos materiais, saúde, agro, indústria, cidades, startups (sem nome) e políticas de inovação' },
+
+  {
+    nome: 'Programação', ativo: true, bancada: 'programacao',
+    foco: 'linguagens que estão ganhando uso de verdade, ferramenta que muda o dia de quem escreve código, prática que economiza trabalho, curiosidade de linguagem e armadilha conhecida',
+    // pedido do Rubens em 23/09: o post tem que deixar claro de que lado está
+    regra: 'Diga no texto se o assunto é de BACK END ou de FRONT END, e por quê. Se ele toca nos dois, separe o que muda de cada lado. Assunto de linguagem só vale com o problema que ela resolve e o custo de adotar.',
+  },
+  {
+    nome: 'Dados e Analytics', ativo: true, bancada: 'dados',
+    foco: 'análise de dados no trabalho, modelagem, qualidade de dado, visualização, ferramentas de BI e o que muda para quem monta relatório e decide por ele',
+    regra: 'Prefira o recurso que a pessoa consegue usar na semana seguinte ao panorama de mercado. Toda métrica vem com o que ela mede e o que ela esconde.',
+  },
+  {
+    nome: 'Cibersegurança', ativo: true, bancada: 'ciberseguranca',
+    foco: 'incidente, vazamento, falha explorada, regulação de segurança, prática de defesa e risco para empresas',
+    regra: 'Neutro politicamente: incidente não vira disputa de lado nenhum. NUNCA descreva como explorar uma falha; escreva o que o gestor e o time fazem a respeito. Toda falha vem com quem é atingido e o que dá para fazer hoje.',
+  },
+  {
+    nome: 'Varejo e Supply Chain', ativo: true, bancada: 'varejo',
+    foco: 'comércio agêntico, logística, última milha, previsão de demanda, estoque, ruptura, experiência de compra e a cadeia do fornecedor à entrega',
+    regra: 'Amarre o assunto na operação: o que muda para quem vende, para quem entrega e para quem compra. Melhoria de prazo tem custo em algum lugar; diga onde.',
+  },
+  {
+    nome: 'Carreira e Competências', ativo: true, bancada: 'carreira',
+    foco: 'habilidade que o mercado está pedindo, caminho para aprendê-la, recrutamento, formação, transição de carreira e o que muda no trabalho de quem já está empregado',
+    regra: 'O foco é aprendizado e habilidade, não motivação. Toda habilidade vem com o sinal de que ela está sendo pedida e com o caminho concreto para desenvolvê-la.',
+  },
 ];
+const AREAS_ATIVAS = AREAS.filter((a) => a.ativo !== false);
+if (!AREAS_ATIVAS.length) throw new Error('Nenhuma área ativa: a bancada não teria sobre o que escrever.');
 
 /* ---------- as etapas ---------- */
 const SCHEMA_TEMA = {
@@ -197,6 +258,7 @@ async function escolheTema(area, recentes, recusados) {
   const t = await chama(A.diretor, [
     `Hoje é ${dataPorExtenso()}. Escolha o tema do próximo documento.`,
     `Área da vez: **${area.nome}**, ou seja, ${area.foco}. Sem nome de empresa, com chance real de ter fonte pública e confiável.`,
+    area.regra ? `\nA regra desta área: ${area.regra}` : '',
     '',
     `${REGRA_BUSCA} Deixe o tema amplo também: o recorte (Brasil, um setor) só entra no texto se as fontes o cobrirem.`,
     // o prompt leva os 45 mais recentes; a conferência por código olha bem mais
@@ -290,7 +352,9 @@ async function umDocumento({ pedido = null } = {}) {
   // mais de 40 documentos por dia
   const recentes = pedido ? [] : await destino.temasRecentes(200);
   const numeroPrevisto = pedido ? 0 : await destino.proximoNumero();
-  const area = pedido ? { nome: 'Pedido do administrador' } : AREAS[numeroPrevisto % AREAS.length];
+  const area = pedido ? { nome: 'Pedido do administrador' } : AREAS_ATIVAS[numeroPrevisto % AREAS_ATIVAS.length];
+  const banca = pedido ? (A = TITULARES, null) : sentaBancada(area, numeroPrevisto);
+  if (banca) log(`bancada de ${area.nome}: ${Object.values(banca.agentes).map((x) => x.nome).join(', ')}`);
   const recusados = [];
   let tema; let fontes = []; let apuracao = '';
 
@@ -373,11 +437,50 @@ async function umDocumento({ pedido = null } = {}) {
   const fontesTexto = fontes.map((f) => `${f.titulo}\n${f.texto}`).join('\n\n');
   const listaFontes = blocoFontes(fontes, false);
 
+  /* ---------- a mesa ----------
+     Pedido do Rubens em 23/09. Antes de o Diretor escrever, cada especialista do
+     tema lê a apuração e diz o que ELE vê ali. Não é uma cadeira do processo: é
+     a equipe conversando, e é o que faz o texto ter mais de um ângulo.
+
+     Lê a apuração, e não as fontes cruas, por duas razões: a apuração já é o que
+     sobrou de relevante, e o trecho das fontes é o que mais pesa na cota do dia.
+     Cada fala é curta de propósito. Quem falhar fica calado: a mesa é para
+     enriquecer o texto, não para travar a produção. */
+  const mesa = [];
+  if (banca?.mesa?.length) {
+    for (const e of banca.mesa) {
+      const voz = { nome: e.nome, id: e.cadeira, cargo: e.cargo, modelo: A.diretor.modelo, temperatura: 0.75, papel: `Você é ${e.cargo.toLowerCase()} e está na reunião de pauta da bancada.\n\n${e.corpo}` };
+      // o robô daquela cadeira passa a usar o nome de quem está falando agora
+      E.elenco = elencoParaTela().map((x) => (x.id === voz.id ? { ...x, nome: voz.nome, cargo: voz.cargo, especialista: true } : x));
+      await pensa(voz, 'lendo a apuração');
+      try {
+        const fala = await chama(voz, [
+          `A bancada vai escrever sobre: ${tema.tema}`,
+          `Área: ${area.nome}.`, area.regra ? `Regra da área: ${area.regra}` : '',
+          '', '## O que o apurador trouxe', apuracao,
+          '', 'Em no máximo 4 frases, diga o que VOCÊ vê aqui que os outros não veriam: o ângulo da sua especialidade, o risco que ninguém citou, ou o que falta perguntar.',
+          'Não resuma a apuração, não repita o que já está escrito e não invente dado que não esteja nela. Se não tem nada a acrescentar, diga isso em uma frase.',
+        ].join('\n'));
+        const curta = semTravessao(String(fala).trim()).slice(0, 700);
+        if (curta.length > 20) { mesa.push({ nome: e.nome, cargo: e.cargo, fala: curta }); await escreve(voz, 'na mesa', curta); }
+      } catch (err) {
+        log(`mesa: ${e.nome} ficou calado (${err.message})`);
+        if (err.semCota) throw err;
+      }
+    }
+  }
+
+  if (mesa.length) E.elenco = elencoParaTela();
+
   await pensa(A.diretor, 'escrevendo o post');
   let doc = await chama(A.diretor, [
     `Tema: ${tema.tema}`, pedido?.contexto ? `\n## O que o administrador mandou junto\n${String(pedido.contexto).slice(0, 1500)}` : '',
-    '', '## A apuração do Pesquisador', apuracao, '', '## As fontes', listaFontes, '',
+    '', '## A apuração do Pesquisador', apuracao,
+    mesa.length ? `\n## O que a equipe disse na mesa\n${mesa.map((m) => `**${m.cargo}:** ${m.fala}`).join('\n\n')}` : '',
+    area.regra ? `\n## A regra desta área\n${area.regra}` : '',
+    '', '## As fontes', listaFontes, '',
     'Escreva o post para o LinkedIn, no formato do seu papel. Comece pelo título numa linha com #. Cite as fontes pelo código entre colchetes, como [f2], logo depois da informação que veio dela. Use pelo menos três fontes diferentes.',
+    mesa.length ? 'A mesa é matéria-prima, não citação: aproveite os ângulos que valem e ignore os que não couberem. NÃO nomeie quem falou, e não escreva nenhum dado que não esteja nas fontes, mesmo que alguém da mesa tenha dito.' : '',
     '',
     'Se as fontes não cobrem um recorte do tema (um país, um setor), NÃO recuse: ajuste o recorte do texto ao que as fontes cobrem. Você escreve um post, nunca uma mensagem pedindo mais fontes.',
   ].join('\n'));
@@ -463,7 +566,10 @@ async function umDocumento({ pedido = null } = {}) {
 
   const pronto = await montaDocumento({ tema, area, doc, fontes, imagem, pedido });
   if (marcasDeEntrada.length) await registra('corrigido', { tema: tema.tema, area: area.nome, marcas: marcasDeEntrada, numero: pronto.numero, pedido: !!pedido });
-  await registra('publicado', { tema: tema.tema, area: area.nome, numero: pronto.numero, titulo: pronto.titulo, fontes: fontes.length, pedido: !!pedido });
+  await registra('publicado', {
+    tema: tema.tema, area: area.nome, numero: pronto.numero, titulo: pronto.titulo, fontes: fontes.length, pedido: !!pedido,
+    ...(banca ? { bancada: area.bancada, cadeiras: banca.escolhidos, mesa: mesa.length } : {}),
+  });
   return pronto;
 }
 
@@ -698,7 +804,8 @@ while (Date.now() < fim - 20 * 60000 * FATOR) {
   // virou o dia: o elenco pode ter mudado
   if (hoje() !== diaDoElenco) {
     elenco = await elencoDoDia(); diaDoElenco = hoje();
-    A = Object.fromEntries([...elenco.equipe, elenco.diretor].map((a) => [a.id, a]));
+    TITULARES = Object.fromEntries([...elenco.equipe, elenco.diretor].map((a) => [a.id, a]));
+    A = TITULARES;
   }
   try {
     // pausa do administrador: termina o documento em curso (esta conferência só
