@@ -48,12 +48,19 @@ jobs:
           CPS: '8'
           INTERVALO_MIN: '35'
         run: |
+          # O freio de mão. Um arquivo PAUSADA na raiz para a bancada inteira: este
+          # turno não trabalha e não chama o próximo. Para voltar, apague o arquivo
+          # pelo github.com e rode o workflow na mão. Existe porque a pausa do
+          # administrador (o lanche) só vale entre documentos e depende do
+          # Firestore: quando o que está saindo está errado, é preciso parar agora.
+          if [ -f PAUSADA ]; then echo "PAUSADA na raiz: a bancada está parada de propósito"; cat PAUSADA; exit 0; fi
           # sem o Firestore o trabalho não aparece em lugar nenhum: não gasta cota à toa
           if [ -z "$FIREBASE_CONTA" ]; then echo "FIREBASE_CONTA ausente, turno não roda"; exit 0; fi
           node aovivo/motor.mjs
-      # a corrente: este turno chama o próximo, mesmo se o motor tiver caído
+      # a corrente: este turno chama o próximo, mesmo se o motor tiver caído. Só
+      # não chama quando o freio de mão está puxado, senão a pausa nunca pegaria.
       - name: Chamar o próximo turno
-        if: always()
+        if: always() && hashFiles('PAUSADA') == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run turno.yml --repo "${{ github.repository }}"
