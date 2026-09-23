@@ -122,6 +122,10 @@ export function montaBancada({ tema, numero, titulares, especialistas, bancadas 
       cargo: e.cargo,
       titular: titular.nome,
       especialista: true,
+      // o jeito solto, além de embutido no papel: as regras da cadeira têm ~5 mil
+      // letras e o jeito tem ~800, então no fim do papel ele é 10% do que o modelo
+      // lê. Quem precisa dele perto da pergunta pega por aqui.
+      jeito: e.corpo,
       papel: `${titular.papel}\n\n## Hoje nesta cadeira\n\nQuem ocupa esta cadeira hoje é ${e.cargo.toLowerCase()}. As regras da cadeira valem inteiras; o jeito de olhar é outro:\n\n${e.corpo}`,
     };
   };

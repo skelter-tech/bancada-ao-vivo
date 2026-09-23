@@ -23,7 +23,7 @@ import { lerEquipe } from '../bancada/equipe.mjs';
 import { destinoPadrao } from './destino.mjs';
 import { novoDiario, anota, marcasDoFiscal } from './diario.mjs';
 import { pauta, filtraBacklog, filtraSugestoes, SCHEMA_BACKLOG, SCHEMA_SUGESTOES } from './reuniao.mjs';
-import { filtraPautas, proximaPauta, marcaUsada, backlogDaArea, quantoSobrou, domingoDaSemana, SCHEMA_PAUTAS, POR_AREA } from './pautas.mjs';
+import { filtraPautas, proximaPauta, marcaUsada, backlogDaArea, quantoSobrou, domingoDaSemana, parecidoNaFila, SCHEMA_PAUTAS, POR_AREA } from './pautas.mjs';
 import { leEspecialistas, confereBancadas, montaBancada, temSubstancia, ECO_PADRAO } from './bancadas.mjs';
 
 const RAIZ = join(import.meta.dirname, '..');
@@ -273,6 +273,21 @@ const SCHEMA_TEMA = {
   },
   required: ['tema', 'porque', 'consulta_pt', 'consulta_en'],
 };
+/* O jeito de quem ocupa a cadeira, repetido junto da pergunta.
+
+   Medido em 23/09, primeiro dia das bancadas por tema: o papel do Diretor tem
+   4.970 letras de regra da cadeira e o jeito do especialista entra no fim, com
+   473 a 857 letras. Ou seja, quem dirige o tema é 9% a 15% do que o modelo lê,
+   e os 85% restantes são as mesmas regras para todo mundo. Na escolha do tema
+   isso é justamente o contrário do que se quer: escolher assunto é a hora em que
+   o conhecimento do cabeça manda, não a hora da regra de formato.
+
+   Repetir custa uns 200 tokens por escolha e põe o jeito ao lado da pergunta,
+   que é a posição que o modelo de fato lê. */
+const oJeitoDaCadeira = (agente) => (agente?.jeito
+  ? `\n## Quem escolhe hoje\n\nVocê é ${agente.cargo.toLowerCase()}, e a escolha tem que ter a sua cara:\n\n${agente.jeito}\n`
+  : '');
+
 const REGRA_BUSCA = 'As buscas: de 2 a 4 palavras, amplas, SEM país, SEM ano e SEM nome próprio. Busca estreita volta vazia e o tema é recusado por falta de fonte. Exemplo bom: "consumo energia data centers" / "data center energy use". Exemplo ruim: "demanda profissionais IA Brasil 2024".';
 const dataPorExtenso = () => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
 
@@ -282,6 +297,7 @@ async function escolheTema(area, recentes, recusados) {
     `Hoje é ${dataPorExtenso()}. Escolha o tema do próximo documento.`,
     `Área da vez: **${area.nome}**, ou seja, ${area.foco}. Sem nome de empresa, com chance real de ter fonte pública e confiável.`,
     area.regra ? `\nA regra desta área: ${area.regra}` : '',
+    oJeitoDaCadeira(A.diretor),
     '',
     `${REGRA_BUSCA} Deixe o tema amplo também: o recorte (Brasil, um setor) só entra no texto se as fontes o cobrirem.`,
     // o prompt leva os 45 mais recentes; a conferência por código olha bem mais
@@ -290,7 +306,9 @@ async function escolheTema(area, recentes, recusados) {
     recusados.length ? `\nTemas que o Pesquisador acabou de recusar por falta de fonte:\n${recusados.map((r) => `- ${r}`).join('\n')}` : '',
   ].join('\n'), SCHEMA_TEMA);
   // repetição conferida por código: o modelo esquece a lista que acabou de ler
-  const repetido = recentes.find((r) => parecido(r, t.tema) >= 0.45);
+  // o mesmo conserto da fila: parecido() cru não enxerga plural, e "fraudes em
+  // pagamentos digitais" contra "fraude em pagamento digital" dá 0.143
+  const repetido = recentes.find((r) => parecidoNaFila(r, t.tema) >= 0.45);
   if (repetido) { log(`tema parecido com "${repetido}", pedindo outro`); return { ...t, repetido }; }
   await escreve(A.diretor, 'escolheu o tema', `${t.tema}\n\n${t.porque}`);
   return t;
@@ -901,6 +919,7 @@ async function fazPautaDaSemana(id) {
         `Amanhã começa a semana. Você responde por **${area.nome}** e está montando a pauta da sua área.`,
         `A área é: ${area.foco}.`,
         area.regra ? `\nA regra desta área: ${area.regra}` : '',
+        oJeitoDaCadeira(cabeca),
         '',
         `Escolha até ${POR_AREA} temas para a bancada escrever nos próximos dias. Um tema por assunto: não desdobre o mesmo assunto em variações.`,
         'Sem nome de empresa. Cada tema precisa ter chance real de ter fonte pública e confiável nesta semana.',
