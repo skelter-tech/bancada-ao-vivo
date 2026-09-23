@@ -39,6 +39,14 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FIREBASE_CONTA: ${{ secrets.FIREBASE_CONTA }}
           DURACAO_MIN: '330'
+          # Os botões do ritmo, aqui para poderem ser mexidos sem tocar em código:
+          # editar o número nesta página e salvar já vale para o próximo turno.
+          # CPS é a velocidade da escrita na tela (era 20 até 23/09, virou 8 para
+          # dar para acompanhar lendo). INTERVALO_MIN é o tempo do começo de um
+          # documento ao começo do próximo (era 13, depois 17, e virou 35 quando o
+          # documento passou a levar 24 minutos de tela).
+          CPS: '8'
+          INTERVALO_MIN: '35'
         run: |
           # sem o Firestore o trabalho não aparece em lugar nenhum: não gasta cota à toa
           if [ -z "$FIREBASE_CONTA" ]; then echo "FIREBASE_CONTA ausente, turno não roda"; exit 0; fi
