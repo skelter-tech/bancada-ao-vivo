@@ -25,6 +25,7 @@ import { novoDiario, anota, marcasDoFiscal } from './diario.mjs';
 import { pauta, filtraBacklog, filtraSugestoes, SCHEMA_BACKLOG, SCHEMA_SUGESTOES } from './reuniao.mjs';
 import { filtraPautas, proximaPauta, marcaUsada, backlogDaArea, quantoSobrou, domingoDaSemana, parecidoNaFila, SCHEMA_PAUTAS, POR_AREA } from './pautas.mjs';
 import { leEspecialistas, confereBancadas, montaBancada, temSubstancia, ECO_PADRAO } from './bancadas.mjs';
+import { foraDaArea } from './areas.mjs';
 
 const RAIZ = join(import.meta.dirname, '..');
 // data e hora em São Paulo, sem importar o publicar.mjs, que arrastaria o comitê
@@ -235,27 +236,42 @@ const AREAS = [
   {
     nome: 'Programação', ativo: true, bancada: 'programacao',
     foco: 'linguagens que estão ganhando uso de verdade, ferramenta que muda o dia de quem escreve código, prática que economiza trabalho, curiosidade de linguagem e armadilha conhecida',
+    // o vocabulário que a trava de área usa (aovivo/areas.mjs); é lista de
+    // classificador, não briefing: serve para dizer de quem é o tema
+    palavras: 'código codigo linguagem linguagens framework biblioteca compilador build refatoração bug depuração sintaxe backend frontend função tipagem pacote dependência versão deploy legado',
     // pedido do Rubens em 23/09: o post tem que deixar claro de que lado está
     regra: 'Diga no texto se o assunto é de BACK END ou de FRONT END, e por quê. Se ele toca nos dois, separe o que muda de cada lado. Assunto de linguagem só vale com o problema que ela resolve e o custo de adotar.',
   },
   {
     nome: 'Dados e Analytics', ativo: true, bancada: 'dados',
     foco: 'análise de dados no trabalho, modelagem, qualidade de dado, visualização, ferramentas de BI e o que muda para quem monta relatório e decide por ele',
+    // o vocabulário que a trava de área usa (aovivo/areas.mjs); é lista de
+    // classificador, não briefing: serve para dizer de quem é o tema
+    palavras: 'analytics relatório painel dashboard métrica métricas modelagem pipeline consulta planilha indicador visualização estatística análise dados dado amostra correlação',
     regra: 'Prefira o recurso que a pessoa consegue usar na semana seguinte ao panorama de mercado. Toda métrica vem com o que ela mede e o que ela esconde.',
   },
   {
     nome: 'Cibersegurança', ativo: true, bancada: 'ciberseguranca',
     foco: 'incidente, vazamento, falha explorada, regulação de segurança, prática de defesa e risco para empresas',
+    // o vocabulário que a trava de área usa (aovivo/areas.mjs); é lista de
+    // classificador, não briefing: serve para dizer de quem é o tema
+    palavras: 'vazamento vazada vazado credencial credenciais invasão ataque ransomware phishing vulnerabilidade falha senha autenticação criptografia incidente defesa firewall chave acesso',
     regra: 'Neutro politicamente: incidente não vira disputa de lado nenhum. NUNCA descreva como explorar uma falha; escreva o que o gestor e o time fazem a respeito. Toda falha vem com quem é atingido e o que dá para fazer hoje.',
   },
   {
     nome: 'Varejo e Supply Chain', ativo: true, bancada: 'varejo',
     foco: 'comércio agêntico, logística, última milha, previsão de demanda, estoque, ruptura, experiência de compra e a cadeia do fornecedor à entrega',
+    // o vocabulário que a trava de área usa (aovivo/areas.mjs); é lista de
+    // classificador, não briefing: serve para dizer de quem é o tema
+    palavras: 'estoque gôndola sortimento ruptura frete entrega fornecedor armazém transporte loja comprador devolução milha demanda logística prateleira pedido',
     regra: 'Amarre o assunto na operação: o que muda para quem vende, para quem entrega e para quem compra. Melhoria de prazo tem custo em algum lugar; diga onde.',
   },
   {
     nome: 'Carreira e Competências', ativo: true, bancada: 'carreira',
     foco: 'habilidade que o mercado está pedindo, caminho para aprendê-la, recrutamento, formação, transição de carreira e o que muda no trabalho de quem já está empregado',
+    // o vocabulário que a trava de área usa (aovivo/areas.mjs); é lista de
+    // classificador, não briefing: serve para dizer de quem é o tema
+    palavras: 'vaga vagas salário salarial recrutamento entrevista currículo promoção senioridade formação treinamento aprendizado habilidade competência contratação carreira profissional',
     regra: 'O foco é aprendizado e habilidade, não motivação. Toda habilidade vem com o sinal de que ela está sendo pedida e com o caminho concreto para desenvolvê-la.',
   },
 ];
@@ -296,6 +312,7 @@ async function escolheTema(area, recentes, recusados) {
   const t = await chama(A.diretor, [
     `Hoje é ${dataPorExtenso()}. Escolha o tema do próximo documento.`,
     `Área da vez: **${area.nome}**, ou seja, ${area.foco}. Sem nome de empresa, com chance real de ter fonte pública e confiável.`,
+    'O tema tem que ser DESTA área. Assunto que pertence a outra mesa da casa não é seu, por mais que você consiga pendurar nele uma justificativa da sua área: isso é conferido por código e volta.',
     area.regra ? `\nA regra desta área: ${area.regra}` : '',
     oJeitoDaCadeira(A.diretor),
     '',
@@ -310,6 +327,10 @@ async function escolheTema(area, recentes, recusados) {
   // pagamentos digitais" contra "fraude em pagamento digital" dá 0.143
   const repetido = recentes.find((r) => parecidoNaFila(r, t.tema) >= 0.45);
   if (repetido) { log(`tema parecido com "${repetido}", pedindo outro`); return { ...t, repetido }; }
+  // de quem é este tema: em 23/09 o RH escolheu "Análise de dados com SQL" para
+  // Carreira, que é tema de Dados com justificativa de carreira pendurada
+  const invasor = foraDaArea(t.tema, area, AREAS_ATIVAS);
+  if (invasor) { log(`tema é de ${invasor.area} (${invasor.nota.toFixed(2)} contra ${invasor.minha.toFixed(2)}), pedindo outro`); return { ...t, invasor }; }
   await escreve(A.diretor, 'escolheu o tema', `${t.tema}\n\n${t.porque}`);
   return t;
 }
@@ -409,6 +430,11 @@ async function umDocumento({ pedido = null } = {}) {
     if (tema.repetido) {
       recusados.push(tema.tema);
       await registra('repetido', { tema: tema.tema, area: area.nome, parecido: tema.repetido, pedido: !!pedido });
+      continue;
+    }
+    if (tema.invasor) {
+      recusados.push(tema.tema);
+      await registra('fora_do_tema', { tema: tema.tema, area: area.nome, dono: tema.invasor.area, pedido: !!pedido });
       continue;
     }
     E.peca = { tema: tema.tema, area: area.nome, fontes: [] };
@@ -935,7 +961,16 @@ async function fazPautaDaSemana(id) {
       continue;
     }
 
-    const f = filtraPautas(p.pautas, { recentes, jaAceitos: itens, area: area.nome, bancada: area.bancada, cabeca: cabeca.nome });
+    // o que é de outra mesa cai antes de virar fila: um tema invasor guardado no
+    // domingo só cobraria a vaga na quarta, longe de quem poderia ligar a causa
+    const invasores = [];
+    const doTema = (p.pautas || []).filter((x) => {
+      const inv = foraDaArea(x.tema, area, AREAS_ATIVAS);
+      if (inv) { invasores.push({ ...x, motivo: `é tema de ${inv.area}` }); return false; }
+      return true;
+    });
+    const f = filtraPautas(doTema, { recentes, jaAceitos: itens, area: area.nome, bancada: area.bancada, cabeca: cabeca.nome });
+    f.caidas.push(...invasores);
     itens.push(...f.passaram); caidas.push(...f.caidas);
 
     await escreve(cabeca, `fechou a pauta de ${area.nome}`, [
