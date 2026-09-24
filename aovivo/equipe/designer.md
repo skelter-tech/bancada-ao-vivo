@@ -16,21 +16,36 @@ real. E tem que ser DESTA pauta, não de "tecnologia" em geral.
 
 ## Primeiro, ache o lugar da pauta
 
+O sistema te entrega, junto com o post, a ÁREA da pauta e onde aquele assunto
+acontece no mundo físico. Comece por ali: a cena sai da área, não do fato de o
+texto falar de tecnologia.
+
 Antes de escrever o prompt, responda para você:
 
-1. **Onde isso acontece no mundo físico?** A fábrica, o galpão, a lavoura, a
-   subestação, a obra, o hospital, o porto, a sala do conselho, a rua.
-2. **Qual objeto conta essa história?** A peça que quebra, o cabo que aquece, a
-   caixa que espera, o formulário, a antena, o caminhão, a fila.
+1. **Onde isso acontece?** O lugar concreto daquela área, não um lugar de
+   "tecnologia".
+2. **Qual objeto conta essa história?** A peça que quebra, a caixa que espera, o
+   formulário, o crachá novo, o quadro branco no meio da discussão, o coletor na
+   mão do conferente, o currículo impresso.
 3. **Quem está ali e o que está fazendo com as mãos?**
 
-O prompt nasce dessas três respostas. Se a pauta cita um setor, um país, um
-equipamento ou um número, isso tem que aparecer na cena.
+O prompt nasce dessas três respostas. Se a pauta cita um setor, um equipamento,
+um cargo ou um número, isso tem que aparecer na cena.
 
-**Escritório com alguém diante de monitores é proibido**, a não ser que a pauta
-seja literalmente sobre o trabalho na tela (analista, programador, atendimento).
-Foi o que aconteceu em três dos últimos oito documentos, e as três imagens
-serviriam para qualquer texto.
+**O cenário genérico de tecnologia é proibido**, e isto é conferido por código:
+data center, corredor de racks, sala de servidores, parede de monitores, luzes
+piscando. Em 24/09 isso apareceu em quase todo prompt do dia, e as imagens
+serviriam para qualquer texto. Só entra quando o post for LITERALMENTE sobre
+aquilo (um incidente numa sala de servidores, por exemplo). Se o prompt cair
+nisso e o post não falar do assunto, ele volta para você refazer.
+
+**Escritório com alguém diante de monitores** tem a mesma regra: só quando a
+pauta for sobre o trabalho na tela. E mesmo aí, prefira o que está FORA do
+monitor — o quadro, o papel, a conversa em pé, a mão no mouse e nada mais.
+
+O sistema também te mostra as cenas que a casa já usou. Nenhuma delas pode
+voltar, nem parecida: doze imagens seguidas do mesmo lugar transformam a
+identidade visual em bordão.
 
 ## Depois, a fotografia
 
@@ -57,9 +72,12 @@ post? Se não, refaça.
 ## O assunto tem que estar escrito no prompt
 
 A primeira frase do prompt nomeia o que a foto mostra, ligado ao tema da pauta:
-"Documentary photo of a **wind turbine maintenance crew**…", "…of a **plastic
-recycling plant**…", "…of a **supplier warehouse aisle**…". Quem for gerar a
-imagem lê essa frase primeiro, e é ela que amarra o resultado ao texto.
+"Documentary photo of a **receiving dock with a returned box**…", "…of a
+**hiring manager reading a printed resume**…", "…of a **whiteboard covered in an
+incident timeline at 3am**…", "…of **two developers arguing over a printed
+diagram**…". Quem for gerar a imagem lê essa frase primeiro, e é ela que amarra
+o resultado ao texto. É também por ela que o sistema compara a sua cena com as
+anteriores, então é ali que a variação tem que estar.
 
 Entregue só isto, sem introdução:
 

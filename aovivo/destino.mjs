@@ -49,6 +49,10 @@ export function destinoFirestore(conta) {
     async temasRecentes(n = 40) {
       return (await db.listaPorNumero('documentos', n)).map((d) => d.tema).reverse();
     },
+    // os prompts de imagem recentes, para o Designer não repetir a cena
+    async cenasRecentes(n = 20) {
+      return (await db.listaPorNumero('documentos', n)).map((d) => d.imagem).filter(Boolean);
+    },
     urgente: () => db.le('controle/urgente'),
     limpaUrgente: () => db.apaga('controle/urgente').catch(() => {}),
     diretor: () => db.le('controle/diretor'),
@@ -91,6 +95,9 @@ export function destinoArquivo(raiz) {
     documento: (doc) => pub.grava(doc, 'documentos'),
     documentoPrivado: (doc) => priv.grava(doc, 'privados'),
     async temasRecentes(n = 40) { return (await le('documentos.json', [])).slice(-n).map((d) => d.tema); },
+    // o índice local não guarda o prompt da imagem: no teste sem internet o
+    // Designer trabalha sem a lista de cenas, e isso não muda o caminho do código
+    async cenasRecentes() { return []; },
     // no teste local, pedidos e controle são arquivos que você edita à mão
     urgente: () => le('urgente.json', null),
     limpaUrgente: () => rm(join(dir, 'urgente.json'), { force: true }),

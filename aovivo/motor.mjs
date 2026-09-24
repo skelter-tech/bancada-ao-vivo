@@ -15,7 +15,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gerar, liberaCotas } from '../src/llm.mjs';
 import { pesquisar, empresasCitadas, veiculosCitados } from '../src/pesquisa.mjs';
-import { numerosSemFonte, semTravessao, pareceIngles } from '../src/fiscal.mjs';
+import { numerosSemFonte, semTravessao, pareceIngles, cenaDe, cenaGenerica } from '../src/fiscal.mjs';
 import { paraLinkedin } from '../src/linkedin.mjs';
 import { parecido } from '../src/memoria.mjs';
 import { separa } from '../src/vault.mjs';
@@ -236,6 +236,9 @@ const AREAS = [
   {
     nome: 'Programação', ativo: true, bancada: 'programacao',
     foco: 'linguagens que estão ganhando uso de verdade, ferramenta que muda o dia de quem escreve código, prática que economiza trabalho, curiosidade de linguagem e armadilha conhecida',
+    // onde este tema acontece no mundo físico, para o Designer não cair no
+    // cenário genérico de tecnologia (ver aovivo/equipe/designer.md)
+    cenario: 'a mesa de quem escreve código, mas também o que existe FORA da tela: o quadro branco no meio de uma revisão, o diagrama impresso e rabiscado, a dupla discutindo em pé, o caderno de anotação ao lado do teclado, o crachá novo de quem entrou esta semana, a sala de reunião às onze da noite antes de um corte de versão',
     // o vocabulário que a trava de área usa (aovivo/areas.mjs); é lista de
     // classificador, não briefing: serve para dizer de quem é o tema
     palavras: 'código codigo linguagem linguagens framework biblioteca compilador build refatoração bug depuração sintaxe backend frontend função tipagem pacote dependência versão deploy legado',
@@ -245,6 +248,9 @@ const AREAS = [
   {
     nome: 'Dados e Analytics', ativo: true, bancada: 'dados',
     foco: 'análise de dados no trabalho, modelagem, qualidade de dado, visualização, ferramentas de BI e o que muda para quem monta relatório e decide por ele',
+    // onde este tema acontece no mundo físico, para o Designer não cair no
+    // cenário genérico de tecnologia (ver aovivo/equipe/designer.md)
+    cenario: 'onde o número é LIDO e vira decisão, não onde ele é calculado: a reunião com o painel projetado, o relatório impresso com anotação à mão, o gerente conferindo o tablet no meio da operação, a planilha aberta ao lado de uma xícara vazia numa mesa de fechamento de mês',
     // o vocabulário que a trava de área usa (aovivo/areas.mjs); é lista de
     // classificador, não briefing: serve para dizer de quem é o tema
     palavras: 'analytics relatório painel dashboard métrica métricas modelagem pipeline consulta planilha indicador visualização estatística análise dados dado amostra correlação',
@@ -253,6 +259,9 @@ const AREAS = [
   {
     nome: 'Cibersegurança', ativo: true, bancada: 'ciberseguranca',
     foco: 'incidente, vazamento, falha explorada, regulação de segurança, prática de defesa e risco para empresas',
+    // onde este tema acontece no mundo físico, para o Designer não cair no
+    // cenário genérico de tecnologia (ver aovivo/equipe/designer.md)
+    cenario: 'o lado humano e físico do incidente: a sala às três da manhã, o telefone no ouvido, o quadro com a linha do tempo do ataque, a leitora de crachá na porta, o armário de rede trancado, a mesa de quem está escrevendo o comunicado para os clientes',
     // o vocabulário que a trava de área usa (aovivo/areas.mjs); é lista de
     // classificador, não briefing: serve para dizer de quem é o tema
     palavras: 'vazamento vazada vazado credencial credenciais invasão ataque ransomware phishing vulnerabilidade falha senha autenticação criptografia incidente defesa firewall chave acesso',
@@ -261,6 +270,9 @@ const AREAS = [
   {
     nome: 'Varejo e Supply Chain', ativo: true, bancada: 'varejo',
     foco: 'comércio agêntico, logística, última milha, previsão de demanda, estoque, ruptura, experiência de compra e a cadeia do fornecedor à entrega',
+    // onde este tema acontece no mundo físico, para o Designer não cair no
+    // cenário genérico de tecnologia (ver aovivo/equipe/designer.md)
+    cenario: 'a operação de verdade: a gôndola com buraco, a doca de recebimento, o coletor na mão do conferente, o caminhão esperando, o corredor do centro de distribuição, a fila do caixa, a caixa devolvida',
     // o vocabulário que a trava de área usa (aovivo/areas.mjs); é lista de
     // classificador, não briefing: serve para dizer de quem é o tema
     palavras: 'estoque gôndola sortimento ruptura frete entrega fornecedor armazém transporte loja comprador devolução milha demanda logística prateleira pedido',
@@ -269,6 +281,9 @@ const AREAS = [
   {
     nome: 'Carreira e Competências', ativo: true, bancada: 'carreira',
     foco: 'habilidade que o mercado está pedindo, caminho para aprendê-la, recrutamento, formação, transição de carreira e o que muda no trabalho de quem já está empregado',
+    // onde este tema acontece no mundo físico, para o Designer não cair no
+    // cenário genérico de tecnologia (ver aovivo/equipe/designer.md)
+    cenario: 'onde a carreira acontece: a sala de entrevista, o balcão do RH, a sala de treinamento com cadeiras em U, a feira de recrutamento, a mesa de alguém estudando depois do expediente, a conversa de corredor sobre promoção',
     // o vocabulário que a trava de área usa (aovivo/areas.mjs); é lista de
     // classificador, não briefing: serve para dizer de quem é o tema
     palavras: 'vaga vagas salário salarial recrutamento entrevista currículo promoção senioridade formação treinamento aprendizado habilidade competência contratação carreira profissional',
@@ -720,8 +735,29 @@ async function umDocumento({ pedido = null } = {}) {
     return { falhou: `barrado pelo fiscal: ${problemas(f).join(' ')}` };
   }
 
+  /* O Designer estava cego: até 24/09 ele recebia só o texto do post, sem a área
+     e sem saber o que a casa já tinha gerado. Sobre um texto de tecnologia ele
+     caía no cenário padrão de tecnologia, e o Rubens viu data center em quase
+     todo prompt. Agora ele recebe onde o assunto acontece e o que não repetir. */
+  const cenas = pedido ? [] : await destino.cenasRecentes(20).catch(() => []);
   await pensa(A.designer, 'pensando na imagem');
-  const imagem = await chama(A.designer, `Post:\n${doc.slice(0, 2600)}`);
+  const pedeImagem = (insistindo) => [
+    `Pauta: ${tema.tema}`,
+    `Área: ${area.nome}.`,
+    area.cenario ? `Onde este assunto acontece no mundo físico: ${area.cenario}` : '',
+    cenas.length ? `\n## Cenas que a casa já usou. NÃO repita nenhuma, nem chegue perto\n${[...new Set(cenas.map(cenaDe).filter(Boolean))].slice(0, 12).map((c) => `- ${c}`).join('\n')}` : '',
+    insistindo ? `\nO seu prompt anterior caiu em "${insistindo}", e o post não fala disso. Cenário genérico de tecnologia é proibido quando o assunto não é literalmente ele. Ache o lugar DESTA pauta.` : '',
+    '', '## O post', doc.slice(0, 2600),
+  ].join('\n');
+
+  let imagem = await chama(A.designer, pedeImagem(null));
+  // a trava: sala de servidor só quando o post for sobre sala de servidor
+  const generica = cenaGenerica(imagem, `${tema.tema} ${doc}`);
+  if (generica) {
+    log(`imagem caiu no cenário genérico ("${generica}") e o post não fala disso, pedindo outra`);
+    await pensa(A.designer, 'a cena não era da pauta, refazendo');
+    imagem = await chama(A.designer, pedeImagem(generica));
+  }
   await escreve(A.designer, 'imagem', imagem);
 
   const pronto = await montaDocumento({ tema, area, doc, fontes, imagem, pedido });
