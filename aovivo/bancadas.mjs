@@ -73,6 +73,14 @@ export function temSubstancia(fala) {
   return /\d/.test(fala) || CONTESTA.test(fala);
 }
 
+/* A mesma leitura, usada para outra decisão: houve atrito nesta mesa?
+   Mesa em que ninguém contestou produz texto com uma segurança que a discussão
+   não teve, e é quando a casa chama alguém de fora do tema para trazer as outras
+   perspectivas. Grosseiro como o resto: procura a marca da contestação, não
+   entende o argumento. Errar para o lado de chamar é barato — a ressalva
+   acrescenta; errar para o lado de não chamar publica falsa unanimidade. */
+export const contestou = (fala) => CONTESTA.test(String(fala || ''));
+
 /* A Leitora está em todas as mesas e fala sempre por último. Ela não ocupa
    cadeira nenhuma: as três cadeiras são de quem sabe do assunto, e a função dela
    é justamente não saber. Sem ela, os 16 especialistas melhoram o que o texto

@@ -19,6 +19,8 @@ export const TIPOS = {
   repetido: 'tema parecido com um já publicado',
   sem_fonte: 'menos de três fontes confiáveis',
   nao_sustenta: 'o Pesquisador achou fonte, mas não sustenta o tema',
+  mesa_vazia: 'a mesa não produziu discussão e o documento não foi escrito',
+  numero_inventado:  'o tema veio com número antes de existir fonte, recusado',
   fora_do_tema: 'as fontes que sobraram eram de outro assunto',
   sem_tema: 'três tentativas sem tema que tivesse fonte',
   desistiu: 'o Diretor não conseguiu escrever com essas fontes',

@@ -14,7 +14,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gerar, liberaCotas } from '../src/llm.mjs';
-import { pesquisar, empresasCitadas, veiculosCitados, manchetes, buscaFeeds } from '../src/pesquisa.mjs';
+import { pesquisar, empresasCitadas, veiculosCitados } from '../src/pesquisa.mjs';
 import { numerosSemFonte, semTravessao, pareceIngles } from '../src/fiscal.mjs';
 import { paraLinkedin } from '../src/linkedin.mjs';
 import { parecido } from '../src/memoria.mjs';
@@ -24,7 +24,7 @@ import { destinoPadrao } from './destino.mjs';
 import { novoDiario, anota, marcasDoFiscal } from './diario.mjs';
 import { pauta, filtraBacklog, filtraSugestoes, SCHEMA_BACKLOG, SCHEMA_SUGESTOES } from './reuniao.mjs';
 import { filtraPautas, proximaPauta, marcaUsada, backlogDaArea, quantoSobrou, domingoDaSemana, parecidoNaFila, SCHEMA_PAUTAS, POR_AREA } from './pautas.mjs';
-import { leEspecialistas, confereBancadas, montaBancada, temSubstancia, ECO_PADRAO } from './bancadas.mjs';
+import { leEspecialistas, confereBancadas, montaBancada, temSubstancia, contestou, ECO_PADRAO } from './bancadas.mjs';
 import { foraDaArea } from './areas.mjs';
 
 const RAIZ = join(import.meta.dirname, '..');
@@ -282,8 +282,8 @@ if (!AREAS_ATIVAS.length) throw new Error('Nenhuma área ativa: a bancada não t
 const SCHEMA_TEMA = {
   type: 'OBJECT',
   properties: {
-    tema: { type: 'STRING', description: 'O tema em uma frase que alguém entende sem contexto. Sem nome de empresa.' },
-    porque: { type: 'STRING', description: 'Duas frases: por que este tema importa agora para quem trabalha.' },
+    tema: { type: 'STRING', description: 'O problema do ofício em uma frase, que alguém da área entende sem contexto. Sem nome de empresa, sem número, sem ano.' },
+    porque: { type: 'STRING', description: 'Duas frases: por que profissionais da área discordariam sobre isto. Sem número: nenhuma fonte foi lida ainda.' },
     consulta_pt: { type: 'STRING', description: 'De 2 a 4 palavras amplas em português, sem país, ano ou nome próprio.' },
     consulta_en: { type: 'STRING', description: 'De 2 a 4 palavras amplas em inglês, sem país, ano ou nome próprio.' },
   },
@@ -304,19 +304,31 @@ const oJeitoDaCadeira = (agente) => (agente?.jeito
   ? `\n## Quem escolhe hoje\n\nVocê é ${agente.cargo.toLowerCase()}, e a escolha tem que ter a sua cara:\n\n${agente.jeito}\n`
   : '');
 
+/* O que a mesa recebe quando a busca não trouxe nada aproveitável. Não é erro:
+   é a mesa falando só do ofício, e o fiscal garante que ela fale sem número. */
+const SEM_MATERIAL = 'Não há material de apoio desta vez. A mesa fala do que sabe da prática, e o texto sai SEM NÚMERO NENHUM.';
+
 const REGRA_BUSCA = 'As buscas: de 2 a 4 palavras, amplas, SEM país, SEM ano e SEM nome próprio. Busca estreita volta vazia e o tema é recusado por falta de fonte. Exemplo bom: "consumo energia data centers" / "data center energy use". Exemplo ruim: "demanda profissionais IA Brasil 2024".';
 const dataPorExtenso = () => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
 
 async function escolheTema(area, recentes, recusados) {
   await pensa(A.diretor, `escolhendo o tema (${area.nome})`);
   const t = await chama(A.diretor, [
-    `Hoje é ${dataPorExtenso()}. Escolha o tema do próximo documento.`,
-    `Área da vez: **${area.nome}**, ou seja, ${area.foco}. Sem nome de empresa, com chance real de ter fonte pública e confiável.`,
+    `Hoje é ${dataPorExtenso()}. Escolha o assunto da próxima MESA REDONDA da sua área.`,
+    `Área da vez: **${area.nome}**, ou seja, ${area.foco}. Sem nome de empresa.`,
     'O tema tem que ser DESTA área. Assunto que pertence a outra mesa da casa não é seu, por mais que você consiga pendurar nele uma justificativa da sua área: isso é conferido por código e volta.',
     area.regra ? `\nA regra desta área: ${area.regra}` : '',
     oJeitoDaCadeira(A.diretor),
     '',
-    `${REGRA_BUSCA} Deixe o tema amplo também: o recorte (Brasil, um setor) só entra no texto se as fontes o cobrirem.`,
+    /* O que separa este formato do anterior. A casa não cobre notícia: ela senta
+       profissionais para discutir o ofício deles. Um acontecimento pode aparecer
+       no texto como prova de que o assunto está vivo, mas nunca É o assunto. */
+    'ISTO NÃO É PAUTA DE JORNAL. Não é acontecimento, lançamento, anúncio, relatório novo nem resultado de pesquisa. É um problema do OFÍCIO: a decisão que a sua área toma errado com frequência, o trade-off que ninguém mede, a prática que todo mundo repete sem saber por quê, a dúvida que cai na sua mesa toda semana.',
+    'Escreva como o assunto que uma mesa de profissionais levaria uma hora discutindo E sobre o qual eles DISCORDARIAM. Se todo mundo da área responderia a mesma coisa, não rende mesa: troque.',
+    '',
+    'NÃO escreva número nenhum aqui, nem porcentagem, nem valor, nem ano. Você não leu fonte nenhuma ainda, então qualquer número neste momento seria inventado por você. O sistema recusa por código.',
+    '',
+    `${REGRA_BUSCA} A busca não é para achar a notícia do assunto: é para trazer material de apoio e confirmar que outras pessoas estão lidando com isso agora.`,
     // o prompt leva os 45 mais recentes; a conferência por código olha bem mais
     // fundo, porque a lista inteira num pedido só encarece cada chamada
     recentes.length ? `\nTemas dos últimos documentos, NÃO repita nem chegue perto:\n${recentes.slice(-45).map((r) => `- ${r}`).join('\n')}` : '',
@@ -331,6 +343,15 @@ async function escolheTema(area, recentes, recusados) {
   // Carreira, que é tema de Dados com justificativa de carreira pendurada
   const invasor = foraDaArea(t.tema, area, AREAS_ATIVAS);
   if (invasor) { log(`tema é de ${invasor.area} (${invasor.nota.toFixed(2)} contra ${invasor.minha.toFixed(2)}), pedindo outro`); return { ...t, invasor }; }
+  /* Número na escolha do tema é inventado por definição: nenhuma fonte foi lida
+     ainda. Em 23/09 saiu ao vivo "a procura por quem implementa RPA cresceu 45%
+     nas vagas de TI em 2025", número que não existia em lugar nenhum. O fiscal
+     protege o texto final, mas esta etapa acontece antes dele.
+
+     Quem confere é o mesmo numerosSemFonte do fiscal, com a lista de fontes
+     vazia: sem fonte, todo número é sem fonte. */
+  const inventados = numerosSemFonte(`${t.tema}\n${t.porque}`, '').map((n) => n.numero);
+  if (inventados.length) { log(`tema veio com número sem fonte (${inventados.join(', ')}), pedindo outro`); return { ...t, inventados }; }
   await escreve(A.diretor, 'escolheu o tema', `${t.tema}\n\n${t.porque}`);
   return t;
 }
@@ -368,44 +389,6 @@ const SCHEMA_MANCHETE = {
 };
 
 // O caminho de quando a busca falha: escolher entre o que os veículos publicaram
-async function pelasManchetes(recentes) {
-  await pensa(A.diretor, 'lendo as manchetes do dia');
-  const lista = await manchetes({ dias: 2, max: 40 }).catch(() => []);
-  if (lista.length < 5) { log('nem as manchetes vieram'); return null; }
-  const t = await chama(A.diretor, [
-    `Hoje é ${dataPorExtenso()}. A busca na internet está fora do ar, então o tema sai das manchetes que os veículos publicaram agora.`,
-    'Escolha UMA manchete que dê um documento útil para quem trabalha, em tecnologia, inovação, mundo corporativo ou IA. Evite nota de consumo, lançamento de produto e política partidária.',
-    '', ...lista.map((m, i) => `${i + 1}. ${m.titulo} (${m.veiculo})`),
-    recentes.length ? `\nTemas recentes, NÃO repita:\n${recentes.slice(-30).map((r) => `- ${r}`).join('\n')}` : '',
-  ].join('\n'), SCHEMA_MANCHETE);
-
-  const escolhida = lista[Math.round(t.numero) - 1];
-  if (!escolhida) return null;
-  await escreve(A.diretor, 'escolheu o tema', `${t.tema}\n\n${t.porque}`);
-  const peca = { tema: t.tema, area: 'Manchete do dia', fontes: [] };
-  E.peca = peca;
-
-  await pensa(A.pesquisador, 'lendo a manchete e o que mais saiu sobre ela');
-  // a manchete escolhida mais as parecidas, achadas nos próprios feeds
-  const relacionadas = await buscaFeeds({ pt: `${t.palavras} ${escolhida.titulo}`, en: t.palavras }).catch(() => []);
-  const itens = [escolhida, ...relacionadas.filter((r) => r.url !== escolhida.url)].slice(0, 8);
-  const p = await pesquisar({ pt: t.palavras, en: '' }, { maxFontes: 6, log, itens });
-  const fontes = p.fontes;
-  peca.fontes = fontes.map((f) => ({ id: f.id, titulo: f.titulo, url: f.url, dominio: f.dominio, tipo: f.tipo }));
-  await escreve(A.pesquisador, 'separou as fontes', [
-    `${fontes.length} fontes abertas e lidas, a partir das manchetes do dia.`,
-    '', ...fontes.map((f) => `[${f.id}] ${f.dominio}: ${f.titulo}`),
-  ].join('\n'));
-  if (fontes.length < 3) {
-    await escreve(A.pesquisador, 'recusou o tema', 'Nem pelas manchetes deu três fontes. Melhor esperar a busca voltar.');
-    return null;
-  }
-  await pensa(A.pesquisador, `lendo ${fontes.length} fontes`);
-  const apuracao = await chama(A.pesquisador, [`Tema: ${t.tema}`, '', '## Fontes (use só estas, pelo código)', blocoFontes(fontes, true, letrasPara(A.pesquisador, 1100))].join('\n'));
-  if (/^\W*N[ÃA]O SUSTENTA/i.test(apuracao)) { await escreve(A.pesquisador, 'recusou o tema', apuracao); return null; }
-  await escreve(A.pesquisador, 'apuração', apuracao);
-  return { tema: { ...t, tema: t.tema }, fontes, apuracao, peca };
-}
 
 async function umDocumento({ pedido = null } = {}) {
   const qualidade = !!pedido;
@@ -437,36 +420,40 @@ async function umDocumento({ pedido = null } = {}) {
       await registra('fora_do_tema', { tema: tema.tema, area: area.nome, dono: tema.invasor.area, pedido: !!pedido });
       continue;
     }
-    E.peca = { tema: tema.tema, area: area.nome, fontes: [] };
-
-    await pensa(A.pesquisador, 'buscando fontes em notícias e artigos');
-    // pedido do administrador: qualidade antes de velocidade, mais fontes lidas
-    const p = await pesquisar({ pt: tema.consulta_pt, en: tema.consulta_en }, { maxFontes: qualidade ? 8 : 6, log });
-    fontes = p.fontes;
-    E.peca.fontes = fontes.map((f) => ({ id: f.id, titulo: f.titulo, url: f.url, dominio: f.dominio, tipo: f.tipo }));
-    const r = p.recusadas;
-    await escreve(A.pesquisador, 'separou as fontes', [
-      `${fontes.length} fontes confiáveis abertas e lidas. Descartadas: ${r.naoConfiavel} fora da lista confiável, ${r.naoAbriu} que não abriram, ${r.semTexto} sem texto.`,
-      '', ...fontes.map((f) => `[${f.id}] ${f.dominio}: ${f.titulo}`),
-    ].join('\n'));
-
-    if (fontes.length < 3) {
-      await escreve(A.pesquisador, 'recusou o tema', 'Menos de três fontes confiáveis. Não dá para sustentar um documento com isso. Diretor, outro recorte.');
+    if (tema.inventados) {
       recusados.push(tema.tema);
-      await registra('sem_fonte', {
-        tema: tema.tema, area: area.nome, consulta_pt: tema.consulta_pt, consulta_en: tema.consulta_en,
-        achadas: fontes.length, descartadas: { fora_da_lista: r.naoConfiavel, nao_abriram: r.naoAbriu, sem_texto: r.semTexto }, pedido: !!pedido,
-      });
+      await registra('numero_inventado', { tema: tema.tema, area: area.nome, numeros: tema.inventados, pedido: !!pedido });
       continue;
     }
+    // as fontes ficam FORA do painel ao vivo: um painel listando o que acabou de
+    // ser baixado é exatamente "entregar na tela que eles estão pesquisando".
+    // Elas voltam no documento, nas referências, que é onde o leitor as quer.
+    E.peca = { tema: tema.tema, area: area.nome, fontes: [] };
 
-    await pensa(A.pesquisador, `lendo ${fontes.length} fontes`);
+    /* ---------- o material, de bastidor ----------
+       A apuração não sumiu: ela é o que impede número inventado de entrar no
+       texto. O que sumiu foi a encenação dela. Ninguém assiste a bancada
+       pesquisar, porque numa mesa redonda os profissionais falam do que sabem e
+       o material serve para sustentar o que afirmam, não para ser o assunto. */
+    log(`material: procurando apoio para "${tema.tema}"`);
+    const p = await pesquisar({ pt: tema.consulta_pt, en: tema.consulta_en }, { maxFontes: qualidade ? 8 : 6, log });
+    fontes = p.fontes;
+    log(`material: ${fontes.length} lidas, ${p.recusadas.naoConfiavel} fora da lista, ${p.recusadas.naoAbriu} não abriram`);
+
+    /* Pouco material NÃO derruba mais o tema. Derrubava porque o assunto era a
+       notícia: sem manchete não havia post. Agora o assunto é o ofício, e uma
+       mesa sobre um problema do ofício não depende de alguém ter publicado
+       matéria sobre ele nesta semana. O que a falta de material limita é o
+       NÚMERO: o fiscal corta todo número que não esteja nas fontes, então mesa
+       sem material fala sem número, que é como profissional fala da própria
+       prática. */
+    if (!fontes.length) { log('material: nada aproveitável, a mesa vai sem apoio'); apuracao = SEM_MATERIAL; break; }
+
+    log(`material: lendo ${fontes.length} fontes`);
     apuracao = await chama(A.pesquisador, [`Tema: ${tema.tema}`, '', '## Fontes (use só estas, pelo código)', blocoFontes(fontes, true)].join('\n'));
     if (/^\W*N[ÃA]O SUSTENTA/i.test(apuracao)) {
-      await escreve(A.pesquisador, 'recusou o tema', apuracao);
-      recusados.push(tema.tema);
-      await registra('nao_sustenta', { tema: tema.tema, area: area.nome, consulta_pt: tema.consulta_pt, achadas: fontes.length, pedido: !!pedido });
-      continue;
+      log('material: o apurador diz que as fontes não sustentam; a mesa vai sem apoio');
+      fontes = []; apuracao = SEM_MATERIAL; break;
     }
     // fonte que o Pesquisador marcou como fora do tema sai antes de o Diretor
     // escrever: no primeiro documento, duas fontes sem relação foram forçadas no texto
@@ -480,29 +467,16 @@ async function umDocumento({ pedido = null } = {}) {
       E.peca.fontes = E.peca.fontes.filter((f) => !fora.has(f.id));
       log(`fora do tema, retiradas: ${[...fora].join(', ')}`);
     }
-    await escreve(A.pesquisador, 'apuração', apuracao);
-    if (fontes.length < 3) {
-      await escreve(A.pesquisador, 'recusou o tema', 'Tirando as fontes fora do tema, sobraram menos de três. Diretor, outro recorte.');
-      recusados.push(tema.tema);
-      await registra('fora_do_tema', { tema: tema.tema, area: area.nome, consulta_pt: tema.consulta_pt, retiradas: [...fora], sobraram: fontes.length, pedido: !!pedido });
-      apuracao = '';
-      continue;
-    }
+    log(`material pronto (${fontes.length} fontes)`);
+    if (!fontes.length) apuracao = SEM_MATERIAL;
     break;
   }
-  /* Plano B: o buscador bloqueou o servidor e nenhum tema achou fonte. Em vez de
-     desistir, o Diretor escolhe entre as manchetes que os veículos publicaram,
-     lidas pelo RSS deles, que não depende de buscador nenhum. Foi o que salvou a
-     tarde de 20/09, quando Bing e Google passaram a devolver zero. */
-  if (!apuracao && !pedido) {
-    const r = await pelasManchetes(recentes);
-    if (r) { tema = r.tema; fontes = r.fontes; apuracao = r.apuracao; E.peca = r.peca; }
-  }
-
-  if (!apuracao || /^\W*N[ÃA]O SUSTENTA/i.test(apuracao)) {
-    await escreve(A.diretor, 'pausa', pedido ? 'Três buscas sem fonte suficiente para o pedido. Aviso o administrador.' : 'Três temas sem fonte suficiente. Pausa curta e recomeço com outro recorte.');
+  // só chega aqui quando as três tentativas foram recusadas antes de haver mesa
+  // (repetido, de outra área, ou com número inventado)
+  if (!apuracao) {
+    await escreve(A.diretor, 'pausa', pedido ? 'Três tentativas sem assunto que se sustente para o pedido. Aviso o administrador.' : 'Três assuntos recusados seguidos. Pausa curta e a mesa recomeça com outra questão.');
     await registra('sem_tema', { area: area.nome, tentados: recusados, pedido: !!pedido });
-    return { falhou: 'sem fonte suficiente em três buscas' };
+    return { falhou: 'três assuntos recusados seguidos' };
   }
 
   const fontesTexto = fontes.map((f) => `${f.titulo}\n${f.texto}`).join('\n\n');
@@ -532,9 +506,11 @@ async function umDocumento({ pedido = null } = {}) {
   ].join(' ');
   const REGRAS_MESA = [
     'Regras da mesa:',
-    '- Não resuma a apuração e não repita o que já foi dito. Quem repete não contribuiu.',
-    '- Não invente dado que não esteja na apuração.',
-    '- Diga se o achado vale no Brasil e o que muda se não valer.',
+    '- Você fala do OFÍCIO, não de notícia. O que vale aqui é o que você viu acontecer na prática, não o que foi publicado.',
+    '- O material de apoio é apoio. Se tudo que você tem a dizer é repetir o que está nele, você não tem o que dizer nesta mesa.',
+    '- Não repita o que já foi dito. Quem repete não contribuiu.',
+    '- Não invente número. Se o material não traz o número, fale sem número: profissional fala da própria prática sem estatística.',
+    '- Diga se vale no Brasil e o que muda se não valer.',
     `- ${CORTE}`,
     '- Português do Brasil, sem travessão.',
   ].join('\n');
@@ -543,20 +519,21 @@ async function umDocumento({ pedido = null } = {}) {
   if (banca?.mesa?.length) {
     for (const [i, e] of banca.mesa.entries()) {
       const anteriores = mesa.length ? ['', '## O que já foi dito na mesa', ...mesa.map((m) => `**${m.cargo}:** ${m.fala}`)].join('\n') : '';
-      const voz = { nome: e.nome, id: e.cadeira, cargo: e.cargo, modelo: A.diretor.modelo, temperatura: 0.8, papel: `Você é ${e.cargo.toLowerCase()} e está na reunião de pauta da bancada.\n\n${e.corpo}` };
+      const voz = { nome: e.nome, id: e.cadeira, cargo: e.cargo, modelo: A.diretor.modelo, temperatura: 0.8, papel: `Você é ${e.cargo.toLowerCase()} e está numa mesa redonda com outros profissionais da sua área. Ninguém aqui é seu chefe e ninguém é repórter: são pares discutindo o ofício.\n\n${e.corpo}` };
       // o robô daquela cadeira passa a usar o nome de quem está falando agora
       E.elenco = elencoParaTela().map((x) => (x.id === voz.id ? { ...x, nome: voz.nome, cargo: voz.cargo, especialista: true } : x));
-      await pensa(voz, mesa.length ? 'ouvindo a mesa' : 'lendo a apuração');
+      await pensa(voz, mesa.length ? 'ouvindo a mesa' : 'abrindo a mesa');
       try {
         const encargo = e.ultima
-          ? 'Você fala por último. Faça as três coisas do seu papel, nesta ordem: a pergunta, a palavra que travou, e o que você faria. Se a equipe conversou entre si e ninguém disse por que isso importa para quem está de fora, é isso que você fala.'
+          ? 'Você fala por último. Faça as três coisas do seu papel, nesta ordem: a pergunta, a palavra que travou, e o que você faria. Se a mesa conversou entre si e ninguém disse por que isso importa para quem está de fora, é isso que você fala.'
           : mesa.length
             ? 'Posicione-se sobre o que já foi dito: onde eles estão errados, onde estão confortáveis demais, ou o que todos deixaram passar. Concordar e acrescentar NÃO é contribuição; se você concorda com todos, diga o que todos deixaram passar. No máximo 4 frases.'
-            : 'Você abre a mesa. Em no máximo 4 frases, diga o que VOCÊ vê aqui que os outros não veriam: o ângulo da sua especialidade, o risco que ninguém citou, ou o que falta perguntar.';
+            : 'Você ABRE a mesa. Em no máximo 4 frases, diga como esta questão aparece na SUA prática: o que você vê acontecer, o que costuma dar errado, e qual é a sua posição. Posição, não panorama: a mesa existe para discordar de você.';
         const fala = await chama(voz, [
-          `A bancada vai escrever sobre: ${tema.tema}`,
+          `A mesa de hoje discute: ${tema.tema}`,
+          tema.porque ? `Por que rende discussão: ${tema.porque}` : '',
           `Área: ${area.nome}.`, area.regra ? `Regra da área: ${area.regra}` : '',
-          '', '## O que o apurador trouxe', apuracao,
+          '', '## Material de apoio (bastidor, não é o assunto)', apuracao,
           anteriores,
           '', encargo, '', REGRAS_MESA,
         ].join('\n'));
@@ -569,7 +546,7 @@ async function umDocumento({ pedido = null } = {}) {
         if (eco >= ECO_MESA) { log(`mesa: ${e.nome} só parafraseou a apuração (${eco.toFixed(2)}), descartado`); continue; }
         if (!temSubstancia(curta)) { log(`mesa: ${e.nome} concordou sem acrescentar, descartado`); continue; }
         mesa.push({ nome: e.nome, cargo: e.cargo, fala: curta, ultima: !!e.ultima });
-        await escreve(voz, e.ultima ? 'a última palavra' : 'na mesa', curta);
+        await escreve(voz, e.ultima ? 'a última palavra' : (mesa.length > 1 && contestou(curta) ? 'contestou' : 'na mesa'), curta);
       } catch (err) {
         log(`mesa: ${e.nome} ficou calado (${err.message})`);
         if (err.semCota) throw err;
@@ -579,28 +556,95 @@ async function umDocumento({ pedido = null } = {}) {
 
   if (mesa.length) E.elenco = elencoParaTela();
 
-  await pensa(A.diretor, 'escrevendo o post');
+  /* Sem mesa, sem documento.
+     Achado em 24/09, rodando: quando todas as falas caem nas travas (eco ou
+     concordância vazia), a mesa fica vazia e o fechamento escrevia o texto
+     assim mesmo, a partir do material. Isso é exatamente o artefato do formato
+     antigo voltando pela porta dos fundos: um texto de apuração assinado por
+     quem deveria ter discutido.
+
+     Neste formato a mesa É o trabalho. Uma voz só é monólogo, não mesa. Então
+     abaixo de duas falas o documento não existe, e o episódio vai para o diário
+     para a reunião de sábado contar quantas vezes isso aconteceu: se for
+     sempre, o número aqui é que está errado, e o diário é que vai dizer. */
+  const MESA_MINIMA = 2;
+  if (banca?.mesa?.length && mesa.length < MESA_MINIMA) {
+    await escreve(A.diretor, 'encerrou sem documento', mesa.length
+      ? 'A mesa não pegou: uma fala só não é discussão. Prefiro não publicar a publicar um texto que ninguém discutiu.'
+      : 'A mesa não teve discussão nenhuma. Sem mesa não há documento: esse é o trato deste formato.');
+    await registra('mesa_vazia', { tema: tema.tema, area: area.nome, falas: mesa.length, convidados: banca.mesa.length, pedido: !!pedido });
+    return { falhou: `a mesa produziu ${mesa.length} fala(s), mínimo ${MESA_MINIMA}` };
+  }
+
+  /* ---------- a ressalva ----------
+     Pedido do Rubens em 23/09: o Plantonista, o Pesquisador e o Auditor não
+     somem com o formato novo, mas param de ser etapa de produção. Eles viram
+     quem é CHAMADO quando a mesa precisa, e o que entregam não é veto: é uma
+     ressalva sobre as outras perspectivas possíveis, que entra no texto.
+
+     Quando chamar é decisão de código, não de humor: mesa em que ninguém
+     contestou produz texto com uma segurança que a discussão não teve. Quem é
+     chamado é o titular da casa (ou o substituto do dia), de propósito — a graça
+     é justamente vir de fora do tema. */
+  let ressalva = '';
+  const atrito = mesa.filter((m) => contestou(m.fala)).length;
+  if (mesa.length >= 2 && !atrito) {
+    const convidado = TITULARES.auditor;
+    log(`mesa sem atrito em ${mesa.length} falas: chamando ${convidado.nome} para a ressalva`);
+    await pensa(convidado, 'chamado à mesa: ninguém contestou');
+    try {
+      ressalva = semTravessao(String(await chama({ ...convidado, temperatura: 0.7 }, [
+        `A mesa discutiu "${tema.tema}" e fechou sem ninguém contestar ninguém.`,
+        'Você não é do tema, e é por isso que foi chamado.',
+        '', '## O que a mesa disse', mesa.map((m) => `**${m.cargo}:** ${m.fala}`).join('\n\n'),
+        '', 'Em no máximo 3 frases: que OUTRAS leituras desta questão existem e não apareceram aqui? Em que situação a conclusão da mesa não valeria?',
+        'Não é veto e não é correção: é ressalva. Você não está dizendo que eles erraram, está dizendo o que a mesa não olhou.',
+        'Não invente número. Português do Brasil, sem travessão.',
+      ].join('\n'))).trim()).slice(0, 600);
+      if (ressalva.length > 20) await escreve(convidado, 'a ressalva', ressalva);
+      else { ressalva = ''; log('ressalva veio vazia'); }
+    } catch (err) {
+      log(`ressalva não veio (${err.message})`);
+      if (err.semCota) throw err;
+    }
+  } else if (mesa.length) {
+    log(`mesa com atrito em ${atrito} de ${mesa.length} falas: ressalva dispensada`);
+  }
+
+  await pensa(A.diretor, 'fechando a mesa');
+  // sem material, o texto não cita ninguém; com pouco, cita o que existe. A
+  // exigência de três fontes era regra de jornal, e derrubava mesa boa sobre
+  // assunto que ninguém publicou esta semana.
+  const minimoFontes = Math.min(3, fontes.length);
   let doc = await chama(A.diretor, [
-    `Tema: ${tema.tema}`, pedido?.contexto ? `\n## O que o administrador mandou junto\n${String(pedido.contexto).slice(0, 1500)}` : '',
-    '', '## A apuração do Pesquisador', apuracao,
-    mesa.length ? `\n## O que a equipe disse na mesa\n${mesa.map((m) => `**${m.cargo}:** ${m.fala}`).join('\n\n')}` : '',
+    `A mesa discutiu: ${tema.tema}`, pedido?.contexto ? `\n## O que o administrador mandou junto\n${String(pedido.contexto).slice(0, 1500)}` : '',
+    mesa.length ? `\n## O que a mesa disse\n${mesa.map((m) => `**${m.cargo}:** ${m.fala}`).join('\n\n')}` : '',
+    ressalva ? `\n## A ressalva\n${ressalva}` : '',
+    `\n## Material de apoio (bastidor)\n${apuracao}`,
     area.regra ? `\n## A regra desta área\n${area.regra}` : '',
-    '', '## As fontes', listaFontes, '',
-    'Escreva o post para o LinkedIn, no formato do seu papel. Comece pelo título numa linha com #. Cite as fontes pelo código entre colchetes, como [f2], logo depois da informação que veio dela. Use pelo menos três fontes diferentes.',
-    mesa.length ? 'A mesa é matéria-prima, não citação: aproveite os ângulos que valem e ignore os que não couberem. NÃO nomeie quem falou, e não escreva nenhum dado que não esteja nas fontes, mesmo que alguém da mesa tenha dito.' : '',
+    fontes.length ? `\n## As fontes\n${listaFontes}` : '',
     '',
-    'Se as fontes não cobrem um recorte do tema (um país, um setor), NÃO recuse: ajuste o recorte do texto ao que as fontes cobrem. Você escreve um post, nunca uma mensagem pedindo mais fontes.',
+    'FECHE A MESA: escreva o documento que sai DESTA DISCUSSÃO, para o LinkedIn, no formato do seu papel. Comece pelo título numa linha com #.',
+    mesa.length
+      ? 'O texto sai da mesa. Ele NÃO é o seu resumo do material com os ângulos dos outros encaixados por cima: é o que a discussão concluiu. Onde a mesa divergiu, o texto DIZ que divergiu e por quê. A discordância é o que este formato tem de melhor, não um problema a resolver. NÃO nomeie quem falou.'
+      : '',
+    ressalva ? 'A ressalva entra perto do fim, como as outras leituras possíveis da questão. Ela não desfaz o que a mesa concluiu.' : '',
+    fontes.length
+      ? `Cite as fontes pelo código entre colchetes, como [f2], logo depois da informação que veio dela. Use pelo menos ${minimoFontes} fonte(s) diferente(s). Nenhum número que não esteja nas fontes, mesmo que alguém da mesa tenha dito.`
+      : 'Não há material de apoio desta vez: escreva SEM NÚMERO NENHUM e sem citar fonte. A mesa fala da prática dela, e isso basta para um bom texto.',
+    '',
+    'Você escreve um documento, nunca uma mensagem pedindo mais material.',
   ].join('\n'));
 
   // Recusa ou texto curto demais não é documento. No segundo teste uma recusa do
   // Diretor ("não é possível elaborar") passou pelo Auditor, ganhou capa e foi
   // publicada como documento 2.
   if (doc.length < 700 || /n[ãa]o (é|e) poss[íi]vel (elaborar|escrever|produzir)|n[ãa]o h[áa] como|envie|envi[áa]-las|forne[çc]a (mais|outras)/i.test(doc.slice(0, 600))) {
-    await escreve(A.diretor, 'desistiu do tema', 'As fontes não sustentam um post inteiro sobre isso. Troco de tema.');
+    await escreve(A.diretor, 'desistiu do tema', 'A mesa não deu texto inteiro sobre isso. Troco de questão.');
     await registra('desistiu', { tema: tema.tema, area: area.nome, fontes: fontes.length, letras: doc.length, pedido: !!pedido });
     return { falhou: 'o Diretor não conseguiu escrever com essas fontes' };
   }
-  await escreve(A.diretor, 'escreveu o post', doc);
+  await escreve(A.diretor, 'fechou a mesa', doc);
 
   /* O fiscal por código. Até 19/09 ele só anotava alerta e o documento saía
      assim mesmo: o 10 foi publicado com uma fonte só, o 9 e o 10 com veículo
@@ -624,7 +668,7 @@ async function umDocumento({ pedido = null } = {}) {
     ...(x.numeros.length ? [`Número que não aparece em nenhuma fonte: ${x.numeros.join(', ')}. Corte ou troque pelo número exato da fonte.`] : []),
     ...(x.codigos.length ? [`Código de fonte que não existe: ${x.codigos.join(', ')}.`] : []),
     ...(x.ingles ? ['O post saiu em inglês. Escreva em português do Brasil, mesmo quando as fontes estiverem em inglês.'] : []),
-    ...(x.usadas < 3 ? [`O post cita só ${x.usadas} fonte(s). Use pelo menos três fontes diferentes da lista, cada uma pelo código.`] : []),
+    ...(x.usadas < minimoFontes ? [`O post cita só ${x.usadas} fonte(s). Use pelo menos ${minimoFontes} fonte(s) diferente(s) da lista, cada uma pelo código.`] : []),
     ...(x.tamanho > LIMITE_POST ? [`O post tem ${x.tamanho} caracteres e o limite é ${LIMITE_POST - 200}. Encurte sem perder as fontes.`] : []),
   ];
 
@@ -642,18 +686,18 @@ async function umDocumento({ pedido = null } = {}) {
     f = confere(doc);
   }
 
-  await pensa(A.auditor, 'conferindo com as fontes do lado');
-  const parecer = await chama(A.auditor, ['## Fontes', blocoFontes(fontes, true, 700), '', '## O post', doc].join('\n'));
-  await escreve(A.auditor, 'parecer', parecer);
+  /* O parecer do Auditor saiu daqui em 24/09. Ele era a última peça jornalística
+     do fluxo: uma etapa de auditoria editorial, em cena, entre o texto e a
+     publicação. No formato novo o Auditor não é etapa — é quem a mesa chama
+     quando precisa, e o que ele entrega é a ressalva, lá em cima, dentro do
+     texto.
 
-  if (/CORRIGIR\s*\**\s*$/i.test(parecer.trim()) || /\*\*CORRIGIR\*\*/.test(parecer)) {
-    await pensa(A.diretor, 'aplicando o parecer do Auditor');
-    doc = await chama(A.diretor, ['Aplique as correções do Auditor. Mantenha todas as regras: sem empresa pelo nome (só como autora de dado, "segundo relatório da X [fN]"), sem veículo pelo nome, só números das fontes, pelo menos três fontes pelo código, no máximo 2.600 caracteres.', '', '## Parecer', parecer, '', '## Fontes', listaFontes, '', '## O post', doc].join('\n'));
-    await escreve(A.diretor, 'versão final', doc);
-    f = confere(doc);
-  }
+     A proteção não foi junto. Quem barra número sem fonte, empresa pelo nome e
+     veículo pelo nome é o fiscal, que é código e roda abaixo. O parecer era um
+     modelo conferindo outro modelo, e o próprio histórico da casa mostra que
+     modelo deixa passar: foi por isso que o fiscal virou código. */
 
-  // última chance: a correção do Auditor pode ter reaberto um problema do fiscal
+  // a correção do fiscal pode ter reaberto um problema dele mesmo
   if (problemas(f).length) {
     await escreve(FISCAL, 'conferiu por código', problemas(f).map((p) => `- ${p}`).join('\n'));
     await pensa(A.diretor, 'última correção');
