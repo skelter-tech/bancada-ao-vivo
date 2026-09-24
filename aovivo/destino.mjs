@@ -13,6 +13,7 @@
 //   controle/pausa       o administrador parou a bancada (lanche na tela pública)
 //   diario/{data}        o que deu errado naquele dia, um documento por dia
 //   reunioes/{sabado}    o que a bancada concluiu na reunião daquele fim de semana
+//   indice/documentos    a lista enxuta dos publicados, que é o que o site lê
 //   pautas/{domingo}     os temas que os cabeças deixaram prontos para a semana
 import { readFile, writeFile, mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -63,6 +64,11 @@ export function destinoFirestore(conta) {
     gravaDiario: (d) => db.grava(`diario/${d.data}`, d, comNumero(d.numero)),
     // os últimos dias, do mais novo para o mais velho (é o que a reunião lê)
     diasDoDiario: (n = 7) => db.listaPorNumero('diario', n),
+    // o índice da lista pública: um documento só (ver aovivo/indice.mjs)
+    indice: () => db.le('indice/documentos'),
+    gravaIndice: (i) => db.grava('indice/documentos', i),
+    // os documentos crus, para montar o índice do zero quando ele não existe
+    todosDocumentos: (n = 1500) => db.listaPorNumero('documentos', n),
     reuniao: (id) => db.le(`reunioes/${id}`),
     gravaReuniao: (r) => db.grava(`reunioes/${r.id}`, r, comNumero(r.numero)),
     pautaSemana: (id) => db.le(`pautas/${id}`),
@@ -113,6 +119,9 @@ export function destinoArquivo(raiz) {
     },
     reuniao: (id) => le(`reuniao-${id}.json`, null),
     gravaReuniao: (r) => grava(`reuniao-${r.id}.json`, r),
+    indice: () => le('indice.json', null),
+    gravaIndice: (i) => grava('indice.json', i),
+    async todosDocumentos() { return le('documentos.json', []); },
     pautaSemana: (id) => le(`pauta-${id}.json`, null),
     gravaPautaSemana: (p) => grava(`pauta-${p.id}.json`, p),
   };

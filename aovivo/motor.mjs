@@ -22,6 +22,7 @@ import { separa } from '../src/vault.mjs';
 import { lerEquipe } from '../bancada/equipe.mjs';
 import { destinoPadrao } from './destino.mjs';
 import { novoDiario, anota, marcasDoFiscal } from './diario.mjs';
+import { acrescenta, monta } from './indice.mjs';
 import { pauta, filtraBacklog, filtraSugestoes, SCHEMA_BACKLOG, SCHEMA_SUGESTOES } from './reuniao.mjs';
 import { filtraPautas, proximaPauta, marcaUsada, backlogDaArea, quantoSobrou, domingoDaSemana, parecidoNaFila, SCHEMA_PAUTAS, POR_AREA } from './pautas.mjs';
 import { leEspecialistas, confereBancadas, montaBancada, temSubstancia, contestou, ECO_PADRAO } from './bancadas.mjs';
@@ -800,13 +801,24 @@ async function montaDocumento({ tema, area, doc: bruto, fontes, imagem, pedido }
     img, '',
   ].join('\n');
   const id = `${pedido ? 'p' : ''}${data}-${String(numero).padStart(4, '0')}`;
-  const pronto = { id, numero, titulo, tema: tema.tema, categoria: area.nome, data, post, comentario, imagem: img, texto, markdown: texto, alertas: [], pedido: pedido?.id || null };
+  /* "markdown" guardava o MESMO texto de novo, dobrando o tamanho de cada
+     documento à toa. Quem lê usa `doc.texto || doc.markdown`, então parar de
+     gravá-lo não quebra nada e os antigos continuam abrindo pelo campo velho. */
+  const pronto = { id, numero, titulo, tema: tema.tema, categoria: area.nome, data, post, comentario, imagem: img, texto, alertas: [], pedido: pedido?.id || null };
   // O arquivo só é gravado DEPOIS de o anúncio terminar de aparecer na tela. Ele
   // já está pronto antes, mas liberar o download enquanto a cena ainda corre faria
   // a lista encher sozinha, sem relação com o que se vê acontecendo.
   await escreve(A.diretor, 'publicou', `${pedido ? 'Pedido' : 'Documento'} ${numero}: ${titulo}\n\n${post}`);
   if (pedido) await destino.documentoPrivado(pronto);
-  else await destino.documento(pronto);
+  else {
+    await destino.documento(pronto);
+    // o índice é o que o site lê; sem ele o documento sai mas não aparece na lista
+    try {
+      await destino.gravaIndice(acrescenta(await destino.indice().catch(() => null), pronto));
+    } catch (e) {
+      log(`índice não atualizou: ${e.message}`);
+    }
+  }
   // a tela avisa que saiu documento novo, para a lista não esperar a próxima leitura
   E.publicou = { numero, titulo, em: agora() };
   await publica();
@@ -1124,6 +1136,27 @@ log(`turno de ${DURACAO_MIN} min, ${CPS} letras/s, destino ${destino.nome}`);
 // isso sai como um turno que rodou, não fez nada e não disse por quê
 if (DURACAO_MIN <= MARGEM_FIM_MIN) log(`ATENÇÃO: turno de ${DURACAO_MIN} min é menor que a margem de fim (${MARGEM_FIM_MIN} min), nenhum documento será começado`);
 if (elenco.troca) log(`elenco de hoje: ${elenco.troca.nome} no lugar do titular de ${elenco.troca.substitui}`);
+
+/* O índice, montado de uma vez quando não existe. É trabalho pesado (lê todos os
+   documentos) e por isso mora AQUI, no Node do Actions, que tem memória: a
+   função de borda que serve a lista não aguentava e era justamente esse o
+   problema. Se ele sumir ou nascer torto, o próximo turno remonta sozinho. */
+try {
+  const indiceAtual = await destino.indice().catch(() => null);
+  if (!indiceAtual?.itens?.length) {
+    const todos = await destino.todosDocumentos();
+    const novo = monta(todos);
+    if (novo.itens.length) {
+      await destino.gravaIndice(novo);
+      log(`índice montado do zero: ${novo.itens.length} documentos`);
+    }
+  } else {
+    log(`índice com ${indiceAtual.itens.length} documentos`);
+  }
+} catch (e) {
+  // o índice é a vitrine, não a produção: sem ele a bancada continua escrevendo
+  log(`índice não pôde ser conferido: ${e.message}`);
+}
 let feitos = 0;
 
 while (Date.now() < fim - MARGEM_FIM_MIN * 60000 * FATOR) {
