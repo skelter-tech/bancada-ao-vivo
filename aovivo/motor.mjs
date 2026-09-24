@@ -443,7 +443,7 @@ async function umDocumento({ pedido = null } = {}) {
        pesquisar, porque numa mesa redonda os profissionais falam do que sabem e
        o material serve para sustentar o que afirmam, não para ser o assunto. */
     log(`material: procurando apoio para "${tema.tema}"`);
-    const p = await pesquisar({ pt: tema.consulta_pt, en: tema.consulta_en }, { maxFontes: qualidade ? 8 : 6, log });
+    const p = await pesquisar({ pt: tema.consulta_pt, en: tema.consulta_en }, { maxFontes: qualidade ? 8 : 6, log, bancada: area.bancada });
     fontes = p.fontes;
     log(`material: ${fontes.length} lidas, ${p.recusadas.naoConfiavel} fora da lista, ${p.recusadas.naoAbriu} não abriram`);
 

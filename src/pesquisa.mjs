@@ -41,6 +41,57 @@ const CONFIAVEIS = [
 ];
 export const TOTAL_VEICULOS = VEICULOS.length;
 
+/* ---------- as fontes técnicas, por bancada ----------
+   A lista de cima é de VEÍCULOS DE IMPRENSA, e foi montada quando a casa cobria
+   notícia. No formato de mesa redonda ela barra justamente quem entende do
+   assunto: em 24/09, num tema de front-end, a peneira aprovou 3 fontes e recusou
+   14, e entre as recusadas estavam i-programmer.info e community.nasscom.in. O
+   apurador então disse que as fontes não sustentavam o tema.
+
+   Estas listas valem SÓ para a bancada do tema: fonte de supply chain não entra
+   num documento de cibersegurança, e a disciplina de relevância continua de pé.
+
+   O que NÃO entrou, de propósito: conteúdo de SEO de fornecedor (hostinger.com,
+   designmodo.com) e agregador de texto de usuário sem revisão. Eles também foram
+   recusados naquele log, e recusados com razão. O problema era a ausência de
+   fonte técnica boa, não a presença de filtro.
+
+   ATENÇÃO, e isto é diferente da lista de cima: os domínios de VEICULOS foram
+   testados um a um em 19/09, abrindo cada página. Estes NÃO foram: quem os
+   escolheu não tinha acesso à internet. Espere que alguns nunca abram (paywall,
+   anti-robô, redirecionamento). O log da peneira passa a dizer quais estavam na
+   lista e não abriram, e é por ali que esta tabela se corrige. */
+export const TECNICAS = {
+  programacao: [
+    // documentação e padrão, que é o que abre sempre
+    'developer.mozilla.org', 'web.dev', 'w3.org', 'whatwg.org', 'ecma-international.org',
+    'python.org', 'nodejs.org', 'go.dev', 'rust-lang.org', 'openjdk.org', 'kernel.org', 'sqlite.org',
+    // engenharia, prática e ofício
+    'martinfowler.com', 'thoughtworks.com', 'stackoverflow.blog', 'github.blog', 'jetbrains.com',
+    'smashingmagazine.com', 'css-tricks.com', 'baeldung.com', 'realpython.com', 'lwn.net', 'i-programmer.info',
+  ],
+  dados: [
+    'learn.microsoft.com', 'postgresql.org', 'duckdb.org', 'clickhouse.com', 'apache.org',
+    'pandas.pydata.org', 'scikit-learn.org', 'r-project.org', 'docs.getdbt.com',
+    'kdnuggets.com', 'jmlr.org', 'dbta.com', 'infoworld.com', 'bigdatawire.com',
+  ],
+  ciberseguranca: [
+    'owasp.org', 'mitre.org', 'first.org', 'cisecurity.org', 'sans.org', 'cert.br',
+    'krebsonsecurity.com', 'schneier.com', 'bleepingcomputer.com', 'thehackernews.com',
+    'securityweek.com', 'darkreading.com', 'helpnetsecurity.com', 'portswigger.net',
+  ],
+  varejo: [
+    'supplychaindive.com', 'retaildive.com', 'supplychainbrain.com', 'inboundlogistics.com',
+    'logisticsmgmt.com', 'scmr.com', 'theloadstar.com', 'freightwaves.com', 'gs1.org',
+    'mercadoeconsumo.com.br', 'portalnovarejo.com.br', 'sbvc.com.br', 'ilos.com.br',
+  ],
+  carreira: [
+    'shrm.org', 'weforum.org', 'ilo.org', 'pewresearch.org', 'nber.org', 'mckinsey.com',
+    // quem publica levantamento sobre o trabalho de quem escreve código
+    'stackoverflow.blog', 'github.blog', 'jetbrains.com',
+  ],
+};
+
 export function dominio(url) {
   try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; }
 }
@@ -50,10 +101,13 @@ export function dominio(url) {
 // entrou como fonte.
 const PATROCINADO = /\/(patrocinado|conteudo-patrocinado|publieditorial|informe-publicitario|branded|dino|parceiros?|estudio-[a-z]+|conteudo-de-marca|sponsored|partner-content|paid-post)(\/|$)/i;
 
-export function confiavel(url) {
+export function confiavel(url, tecnicas = null) {
   const d = dominio(url);
   if (!d || PATROCINADO.test(String(url).replace(/^https?:\/\/[^/]+/, ''))) return false;
-  return CONFIAVEIS.some((re) => re.test(d));
+  if (CONFIAVEIS.some((re) => re.test(d))) return true;
+  // a lista da bancada do tema, quando houver: casa o domínio exato ou um
+  // subdomínio dele (blog.github.com entra por github.com)
+  return !!tecnicas?.length && tecnicas.some((t) => d === t || d.endsWith(`.${t}`));
 }
 
 /* ---------- nome de empresa ----------
@@ -375,13 +429,15 @@ export async function manchetes({ dias = 2, max = 45 } = {}) {
     .map((i) => ({ tipo: 'notícia', titulo: i.titulo, url: i.url, veiculo: i.veiculo, data: i.data?.toISOString?.() || null }));
 }
 
-export async function pesquisar(consultas, { maxFontes = 8, log = () => {}, itens = null } = {}) {
+export async function pesquisar(consultas, { maxFontes = 8, log = () => {}, itens = null, bancada = null } = {}) {
+  // a lista técnica da bancada do tema, além da lista de imprensa
+  const tecnicas = bancada ? TECNICAS[bancada] || null : null;
   const c = typeof consultas === 'string' ? { pt: consultas, en: consultas } : (consultas || { pt: '', en: '' });
   // com a lista pronta (as manchetes escolhidas pelo Diretor), não há o que buscar
   if (itens) {
     const [bing, google, artigos] = [itens, [], c.en ? await buscaArxiv(c.en, 3) : []];
     log(`sem busca: ${itens.length} manchetes escolhidas, ${artigos.length} artigos`);
-    return peneira(c, bing, google, artigos, [], { maxFontes, log });
+    return peneira(c, bing, google, artigos, [], { maxFontes, log, tecnicas });
   }
   // SEM_BUSCADOR=1 finge que Bing e Google estão bloqueados: é como se testa o
   // caminho alternativo num dia em que eles estão respondendo normalmente
@@ -404,12 +460,12 @@ export async function pesquisar(consultas, { maxFontes = 8, log = () => {}, iten
       log(`ainda fraca, fui aos feeds dos veículos: ${rss.length} notícias`);
     }
   }
-  return peneira(c, bing, google, artigos, feeds, { maxFontes, log });
+  return peneira(c, bing, google, artigos, feeds, { maxFontes, log, tecnicas });
 }
 
 /* A peneira, igual para qualquer canal: abre cada candidato, confere o domínio na
    lista confiável e guarda só o que tem texto legível. */
-async function peneira(c, bing, google, artigos, feeds, { maxFontes, log }) {
+async function peneira(c, bing, google, artigos, feeds, { maxFontes, log, tecnicas = null }) {
   // Bing e Google intercalados, sem repetir a mesma notícia (mesmo título) e com no
   // máximo duas por veículo: um veículo só sustentando o texto não é apuração
   const noticias = [];
@@ -432,7 +488,8 @@ async function peneira(c, bing, google, artigos, feeds, { maxFontes, log }) {
   // seria recusado de qualquer jeito
   // intercala notícia e artigo, com no máximo 3 artigos: no primeiro teste o arXiv
   // ocupou 6 das 7 vagas e metade nem era do tema
-  const confiaveis = noticias.filter((n) => confiavel(`https://${n._dom}/`)).filter(limitaVeiculo);
+  const ok = (u) => confiavel(u, tecnicas);
+  const confiaveis = noticias.filter((n) => ok(`https://${n._dom}/`)).filter(limitaVeiculo);
   const candidatos = [];
   for (let i = 0; i < Math.max(confiaveis.length, 3); i++) {
     if (confiaveis[i]) candidatos.push(confiaveis[i]);
@@ -441,8 +498,9 @@ async function peneira(c, bing, google, artigos, feeds, { maxFontes, log }) {
   const consulta = `${c.pt || ''} | ${c.en || ''}`;
   const aprovadas = [];
   const recusadas = { naoAbriu: 0, naoConfiavel: 0, semTexto: 0 };
+  const naoAbriram = [];
 
-  recusadas.naoConfiavel = noticias.length - noticias.filter((n) => confiavel(`https://${n._dom}/`)).length;
+  recusadas.naoConfiavel = noticias.length - noticias.filter((n) => ok(`https://${n._dom}/`)).length;
   const urlsAprovadas = new Set();
   for (const f of candidatos) {
     if (aprovadas.length >= maxFontes) break;
@@ -453,8 +511,8 @@ async function peneira(c, bing, google, artigos, feeds, { maxFontes, log }) {
     }
     if (urlsAprovadas.has(f.url)) continue;
     const p = await abre(f.url);
-    if (!p.ok) { recusadas.naoAbriu++; continue; }
-    if (!confiavel(p.url)) { recusadas.naoConfiavel++; continue; }
+    if (!p.ok) { recusadas.naoAbriu++; naoAbriram.push(dominio(f.url)); continue; }
+    if (!ok(p.url)) { recusadas.naoConfiavel++; continue; }
     const texto = f.tipo === 'artigo' ? `${f.titulo}. ${f.resumo}` : textoDaPagina(p.html);
     if (texto.length < 400) { recusadas.semTexto++; continue; }
     urlsAprovadas.add(f.url);
@@ -465,9 +523,14 @@ async function peneira(c, bing, google, artigos, feeds, { maxFontes, log }) {
   const fontes = aprovadas.map((f, i) => ({ id: `f${i + 1}`, ...f }));
   // quem foi barrado pela lista: é com isto que se decide, com critério, se a
   // lista está curta demais ou fazendo o trabalho dela
-  const barrados = [...new Set(noticias.filter((n) => !confiavel(`https://${n._dom}/`)).map((n) => n._dom).filter(Boolean))];
+  const barrados = [...new Set(noticias.filter((n) => !ok(`https://${n._dom}/`)).map((n) => n._dom).filter(Boolean))];
   log(`peneira: ${fontes.length} aprovadas, recusadas ${recusadas.naoAbriu} que não abriram, ${recusadas.naoConfiavel} fora da lista confiável, ${recusadas.semTexto} sem texto`);
+  if (fontes.length) log(`  aprovadas: ${fontes.map((f) => f.dominio).join(', ')}`);
   if (barrados.length) log(`  fora da lista: ${barrados.join(', ')}`);
+  /* As listas técnicas não foram testadas domínio a domínio, ao contrário da
+     lista de imprensa. Esta linha é como elas se corrigem: domínio que está na
+     lista da bancada e nunca aparece aqui aberto é candidato a sair. */
+  if (naoAbriram.length) log(`  na lista e não abriu: ${[...new Set(naoAbriram)].join(', ')}`);
   return { consulta, fontes, recusadas, barrados };
 }
 
