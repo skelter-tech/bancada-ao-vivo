@@ -399,6 +399,13 @@ async function umDocumento({ pedido = null } = {}) {
   const numeroPrevisto = pedido ? 0 : await destino.proximoNumero();
   const area = pedido ? { nome: 'Pedido do administrador' } : AREAS_ATIVAS[numeroPrevisto % AREAS_ATIVAS.length];
   const banca = pedido ? (A = TITULARES, null) : sentaBancada(area, numeroPrevisto);
+  /* A tela precisa saber QUEM sentou, agora. Sem esta linha o crachá continua com
+     o elenco do documento anterior até a mesa começar, e em 24/09 isso pôs o nome
+     da Diretora de RH em cima de uma escolha de tema da CTO sobre front-end: a
+     bancada parecia estar fazendo exatamente o que a trava de área impede.
+     Erro de vitrine é pior que erro de motor, porque ele acusa o motor de um
+     crime que o motor não cometeu. */
+  E.elenco = elencoParaTela();
   if (banca) log(`bancada de ${area.nome}: ${Object.values(banca.agentes).map((x) => x.nome).join(', ')}`);
   const recusados = [];
   let tema; let fontes = []; let apuracao = '';
@@ -554,7 +561,9 @@ async function umDocumento({ pedido = null } = {}) {
     }
   }
 
-  if (mesa.length) E.elenco = elencoParaTela();
+  // sem condição: o caminho da mesa vazia também sai da mesa, e saía com o nome
+  // do último que falou grudado na cadeira
+  E.elenco = elencoParaTela();
 
   /* Sem mesa, sem documento.
      Achado em 24/09, rodando: quando todas as falas caem nas travas (eco ou
