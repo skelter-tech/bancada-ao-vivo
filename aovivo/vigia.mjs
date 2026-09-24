@@ -22,9 +22,24 @@ const minutoSP = () => {
   return (h % 24) * 60 + m;
 };
 
-const estado = await db.le('aovivo/estado').catch(() => null);
+/* Ler o estado e FALHAR ao ler são coisas diferentes, e até 24/09 o vigia tratava
+   as duas como "motor morto": o .catch devolvia null, o null virava "sem sinal do
+   motor" e ele religava o turno. Religar não conserta Firestore fora do ar, então
+   o que ele fazia era queimar um turno a cada meia hora enquanto o motor estava
+   vivo e trabalhando do outro lado. */
+let erroDeLeitura = null;
+const estado = await db.le('aovivo/estado').catch((e) => { erroDeLeitura = e; return null; });
 const agora = new Date();
 const idade = estado?.atualizado ? (agora - Date.parse(estado.atualizado)) / 60000 : Infinity;
+
+/* O compasso entre documentos não é travamento. O motor já publica a hora do
+   próximo documento para a tela não parecer parada; o vigia passa a ler o mesmo
+   campo. Antes ele comparava com TRAVADA_MIN=25, que virou mentira quando o
+   INTERVALO_MIN subiu para 35 em 23/09: todo intervalo normal passou a parecer
+   travada. Usar a hora que o próprio motor anunciou dispensa manter dois números
+   iguais em dois arquivos, que é justamente o que se desencontrou. */
+const GRACA_MIN = 6;
+const esperando = !!estado?.proximo && Date.parse(estado.proximo) > agora - GRACA_MIN * 60000;
 const m = minutoSP();
 const expediente = m >= 7 * 60 && m < 23 * 60 + 50;
 
@@ -47,14 +62,18 @@ const MOTIVO = {
 };
 
 let situacao; let acao = '';
-if (!estado) situacao = 'sem sinal do motor';
+if (erroDeLeitura) situacao = `não consegui ler o estado: ${String(erroDeLeitura.message).slice(0, 120)}`;
+else if (!estado) situacao = 'sem sinal do motor';
 else if (MOTIVO[estado.modo]) situacao = MOTIVO[estado.modo];
 else if (!expediente) situacao = 'fora do expediente';
+else if (esperando) situacao = `no compasso, próximo documento às ${new Date(estado.proximo).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}`;
 else if (idade > TRAVADA_MIN) situacao = `travada há ${Math.round(idade)} min`;
 else situacao = `trabalhando (${estado.atual?.agente}: ${estado.atual?.acao})`;
 
-// religar é a única coisa que ele faz: um turno novo, que a corrente mantém
-if (/travada|sem sinal/.test(situacao) && expediente) {
+/* Religar é a única coisa que ele faz, e só quando religar resolve. Falha de
+   leitura fica de fora de propósito: ali o problema é o banco ou a chave, e um
+   turno novo não toca em nenhum dos dois. */
+if (/travada|sem sinal/.test(situacao) && !erroDeLeitura && expediente) {
   try {
     execSync(`gh workflow run turno.yml --repo ${REPO}`, { stdio: 'pipe' });
     acao = 'religou o turno';
