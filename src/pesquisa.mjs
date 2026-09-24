@@ -69,6 +69,10 @@ export const TECNICAS = {
     // engenharia, prática e ofício
     'martinfowler.com', 'thoughtworks.com', 'stackoverflow.blog', 'github.blog', 'jetbrains.com',
     'smashingmagazine.com', 'css-tricks.com', 'baeldung.com', 'realpython.com', 'lwn.net', 'i-programmer.info',
+    // levantamento de adoção, que é o dado que falta quando a mesa discute
+    // "vale trocar de ferramenta": veio do log de 24/09, onde 2025.stateofjs.com
+    // foi recusado num tema sobre adotar framework novo
+    'stateofjs.com', 'stateofcss.com',
   ],
   dados: [
     'learn.microsoft.com', 'postgresql.org', 'duckdb.org', 'clickhouse.com', 'apache.org',
