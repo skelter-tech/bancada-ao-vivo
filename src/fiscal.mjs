@@ -63,6 +63,20 @@ export function travessoes(texto) {
 //   "a análise — que compara — por" ->  "a análise, que compara, por"
 //   qualquer outro                 ->  vírgula
 // Hífen de palavra composta (pré-operatório) não é travessão e não é tocado.
+/* O título da lista, sem as marcas de markdown que sobram.
+   Em 25/09 o documento 177 apareceu na lista como "# O patch às pressas ou o
+   risco documentado": o Diretor escreveu dois "#" na linha do título e a
+   extração levou o segundo junto. Também tira o fecho "###" que alguns estilos
+   de markdown põem no fim da linha, e o negrito, pela mesma razão. */
+export function tituloLimpo(texto) {
+  return String(texto || '')
+    .replace(/^[\s#]+/, '')
+    .replace(/[\s#]+$/, '')
+    .replace(/\*\*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function semTravessao(texto) {
   return String(texto)
     .replace(/(\*\*[^*\n]+\*\*)\s*[—–]\s*/g, '$1: ')

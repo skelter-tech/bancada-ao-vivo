@@ -22,11 +22,20 @@
    antigos saem do índice (os documentos em si continuam lá, inteiros). */
 export const TETO = 1500;
 
+/* A versão do FORMATO da entrada. Suba quando mudar o que uma entrada guarda ou
+   como ela é limpa: o motor remonta o índice do zero ao ver versão diferente, e
+   assim uma correção alcança também os documentos já indexados. Sem isto, o
+   conserto do título de 25/09 valeria só para os documentos novos e os 181
+   antigos continuariam torto na lista para sempre. */
+export const VERSAO = 2;
+
+import { tituloLimpo } from '../src/fiscal.mjs';
+
 // Só o que a lista precisa para desenhar uma linha. Nada de texto.
 export const entrada = (doc) => ({
   id: doc.id,
   numero: doc.numero,
-  titulo: doc.titulo,
+  titulo: tituloLimpo(doc.titulo),
   tema: doc.tema,
   categoria: doc.categoria,
   data: doc.data,
@@ -39,11 +48,12 @@ export const entrada = (doc) => ({
 export function acrescenta(indice, doc, teto = TETO) {
   const nova = entrada(doc);
   const resto = (indice?.itens || []).filter((x) => x.id !== nova.id);
-  return { itens: [nova, ...resto].sort((a, b) => b.numero - a.numero).slice(0, teto) };
+  return { versao: VERSAO, itens: [nova, ...resto].sort((a, b) => b.numero - a.numero).slice(0, teto) };
 }
 
 // O índice inteiro a partir dos documentos crus, para a primeira montagem e para
 // o conserto quando ele sumir.
 export const monta = (documentos, teto = TETO) => ({
+  versao: VERSAO,
   itens: (documentos || []).filter((d) => d?.id && d?.numero).map(entrada).sort((a, b) => b.numero - a.numero).slice(0, teto),
 });

@@ -15,14 +15,14 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gerar, liberaCotas } from '../src/llm.mjs';
 import { pesquisar, empresasCitadas, veiculosCitados } from '../src/pesquisa.mjs';
-import { numerosSemFonte, semTravessao, pareceIngles, cenaDe, cenaGenerica } from '../src/fiscal.mjs';
+import { numerosSemFonte, semTravessao, pareceIngles, cenaDe, cenaGenerica, tituloLimpo } from '../src/fiscal.mjs';
 import { paraLinkedin } from '../src/linkedin.mjs';
 import { parecido } from '../src/memoria.mjs';
 import { separa } from '../src/vault.mjs';
 import { lerEquipe } from '../bancada/equipe.mjs';
 import { destinoPadrao } from './destino.mjs';
 import { novoDiario, anota, marcasDoFiscal } from './diario.mjs';
-import { acrescenta, monta } from './indice.mjs';
+import { acrescenta, monta, VERSAO } from './indice.mjs';
 import { pauta, filtraBacklog, filtraSugestoes, SCHEMA_BACKLOG, SCHEMA_SUGESTOES } from './reuniao.mjs';
 import { filtraPautas, proximaPauta, marcaUsada, backlogDaArea, quantoSobrou, domingoDaSemana, parecidoNaFila, SCHEMA_PAUTAS, POR_AREA } from './pautas.mjs';
 import { leEspecialistas, confereBancadas, montaBancada, temSubstancia, contestou, ECO_PADRAO } from './bancadas.mjs';
@@ -778,7 +778,7 @@ async function montaDocumento({ tema, area, doc: bruto, fontes, imagem, pedido }
   const doc = semTravessao(bruto);
   const { post, usadas } = paraLinkedin(doc, fontes);
   const numero = pedido ? await destino.proximoNumeroPrivado() : await destino.proximoNumero();
-  const titulo = semTravessao((doc.match(/^\s*#\s+(.+)$/m) || [, tema.tema])[1].trim());
+  const titulo = tituloLimpo(semTravessao((doc.match(/^\s*#\s+(.+)$/m) || [, tema.tema])[1]));
   const data = hoje();
   const refs = usadas.map((id, i) => { const x = fontes.find((f) => f.id === id); return `(${i + 1}) ${x.titulo}\n${x.url}`; });
   const comentario = ['Fontes citadas no post:', '', ...refs].join('\n');
@@ -1143,15 +1143,18 @@ if (elenco.troca) log(`elenco de hoje: ${elenco.troca.nome} no lugar do titular 
    problema. Se ele sumir ou nascer torto, o próximo turno remonta sozinho. */
 try {
   const indiceAtual = await destino.indice().catch(() => null);
-  if (!indiceAtual?.itens?.length) {
+  // formato velho também remonta: é assim que um conserto de entrada alcança os
+  // documentos que já estavam indexados, e não só os que vierem depois
+  const precisa = !indiceAtual?.itens?.length || indiceAtual.versao !== VERSAO;
+  if (precisa) {
     const todos = await destino.todosDocumentos();
     const novo = monta(todos);
     if (novo.itens.length) {
       await destino.gravaIndice(novo);
-      log(`índice montado do zero: ${novo.itens.length} documentos`);
+      log(`índice ${indiceAtual?.itens?.length ? `remontado (formato ${indiceAtual.versao || 1} para ${VERSAO})` : 'montado do zero'}: ${novo.itens.length} documentos`);
     }
   } else {
-    log(`índice com ${indiceAtual.itens.length} documentos`);
+    log(`índice com ${indiceAtual.itens.length} documentos, formato ${indiceAtual.versao}`);
   }
 } catch (e) {
   // o índice é a vitrine, não a produção: sem ele a bancada continua escrevendo
