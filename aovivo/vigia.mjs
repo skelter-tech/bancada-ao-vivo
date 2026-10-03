@@ -91,5 +91,8 @@ const registro = {
   idadeMin: Number.isFinite(idade) ? Math.round(idade) : null,
   documentos: (await db.listaPorNumero('documentos', 1).catch(() => []))[0]?.numero || null,
 };
-await db.grava('vigia/estado', { ...registro, historico: [registro, ...(anterior?.historico || [])].slice(0, 48) });
+// 96 e não 48: com quatro agendas pedindo ronda, 48 entradas cobriam menos de um
+// dia no painel do administrador, e o que ele quer ver ali é "o que aconteceu
+// enquanto eu dormia"
+await db.grava('vigia/estado', { ...registro, historico: [registro, ...(anterior?.historico || [])].slice(0, 96) });
 console.log(`${registro.quando} ${situacao}${acao ? ` | ${acao}` : ''}`);

@@ -65,6 +65,7 @@ async function chama({ chave, modelo, sistema, prompt, temperatura, schema }) {
   }
 
   const json = await r.json();
+  conta(json.usageMetadata?.promptTokenCount, (json.usageMetadata?.candidatesTokenCount || 0) + (json.usageMetadata?.thoughtsTokenCount || 0));
   const cand = json.candidates?.[0];
   const texto = cand?.content?.parts?.map((p) => p.text).filter(Boolean).join('') || '';
   if (!texto) throw new Error(`Modelo não devolveu texto (${cand?.finishReason || json.promptFeedback?.blockReason || 'resposta vazia'})`);
@@ -85,8 +86,31 @@ const GROQ_TETO_TOKENS = 7600;
 const OTPM = { 'qwen/qwen3.8-27b': 1000 };
 export const GROQ_RESERVA = 'groq:openai/gpt-oss-120b';
 
-// Estimativa grosseira, no lado seguro: português dá perto de 3,5 caracteres por token.
-export const tokensEstimados = (...partes) => Math.ceil(partes.join('').length / 3.4);
+/* O consumo de verdade, como os dois fornecedores cobram: tokens de entrada e de
+   saída lidos da própria resposta (usage no Groq, usageMetadata no Gemini, que
+   conta o raciocínio à parte e por isso entra somado na saída). Pedido da
+   auditoria de leitura em 30/09: "meça tokens por post antes e depois". Até
+   aqui a casa só estimava; o motor zera isto no começo de cada documento e
+   grava o total no diário quando publica. */
+export const consumo = { entrada: 0, saida: 0, chamadas: 0 };
+function conta(entrada, saida) {
+  consumo.entrada += Number(entrada) || 0;
+  consumo.saida += Number(saida) || 0;
+  consumo.chamadas += 1;
+}
+export function zeraConsumo() {
+  const antes = { ...consumo };
+  consumo.entrada = 0; consumo.saida = 0; consumo.chamadas = 0;
+  return antes;
+}
+
+/* Estimativa no lado seguro. Era 3,4 letras por token, de cabeça; medido em
+   02/10 no próprio Groq, mandando o papel do Diretor com um post real e lendo o
+   prompt_tokens cobrado: 3,98 no qwen e 4,04 no gpt-oss. Com 3,4 a conta inflava
+   todo pedido em 18%, e a checagem abaixo recusava, sem tentar, a escrita final
+   de uma mesa com fonte e apuração longa, que de verdade cabia com mil tokens de
+   folga. 3,8 fica 5% abaixo da menor medição. */
+export const tokensEstimados = (...partes) => Math.ceil(partes.join('').length / 3.8);
 
 // O Gemini recebe o schema nativo. O Groq recebe modo JSON e um molde do formato
 // no próprio pedido, e a resposta é validada do mesmo jeito que a do Gemini.
@@ -140,6 +164,7 @@ async function chamaGroq({ modelo, sistema, prompt, temperatura, schema }) {
   }
 
   const j = await r.json();
+  conta(j.usage?.prompt_tokens, j.usage?.completion_tokens);
   const texto = String(j.choices?.[0]?.message?.content || '').trim();
   if (!texto) throw new Error('Groq não devolveu texto');
   if (!schema) return texto;

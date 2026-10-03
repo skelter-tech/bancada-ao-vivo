@@ -31,6 +31,19 @@ const VEICULOS = [
   // internacional: tecnologia e ciência
   'techcrunch.com', 'theverge.com', 'wired.com', 'technologyreview.com', 'zdnet.com', 'theregister.com', 'datacenterdynamics.com', 'infoq.com', 'spectrum.ieee.org',
   'siliconangle.com', 'computerworld.com', 'informationweek.com', 'cio.com', '404media.co', 'theconversation.com', 'scientificamerican.com', 'sciencedaily.com', 'phys.org', 'techxplore.com',
+  /* Imprensa especializada, entrou em 02/10 por decisão do Rubens depois da
+     medição: no primeiro teste do formato de redação a peneira recusou 29 de 30,
+     38 de 43 e 27 de 29 resultados, e 3 dos 4 temas caíram por falta de fonte.
+     Entre os recusados estava quem de fato cobre o assunto. Ficaram fora de
+     propósito: Forbes (rede de colaboradores sem revisão por pauta) e as
+     consultorias (McKinsey, KPMG, Gartner), que continuam valendo pela exceção
+     de empresa autora de dado, citada dentro de uma fonte de imprensa.
+     Os 20 foram testados um a um em 02/10, como os de cima: o Bing achou
+     matéria recente de cada um e a página abriu com 2 mil a 4,1 mil letras de
+     texto legível, sem paywall. */
+  'techtarget.com', 'computerweekly.com', 'thenewstack.io', 'devclass.com', 'hpcwire.com', 'cloudcomputing-news.net', 'sdxcentral.com', 'networkworld.com',
+  'thehackernews.com', 'infosecurity-magazine.com', 'securityweek.com', 'darkreading.com', 'bleepingcomputer.com', 'csoonline.com',
+  'tiinside.com.br', 'decisionreport.com.br', 'inforchannel.com.br', 'hardware.com.br', 'itforum.com.br', 'cisoadvisor.com.br',
 ];
 const CONFIAVEIS = [
   // governo e organismos
@@ -103,7 +116,11 @@ export function dominio(url) {
 // Conteúdo pago dentro de veículo confiável: é release com a marca do jornal. No
 // primeiro teste da área Mundo corporativo, um texto de valor.globo.com/patrocinado/dino
 // entrou como fonte.
-const PATROCINADO = /\/(patrocinado|conteudo-patrocinado|publieditorial|informe-publicitario|branded|dino|parceiros?|estudio-[a-z]+|conteudo-de-marca|sponsored|partner-content|paid-post)(\/|$)/i;
+// Em 02/10, no primeiro teste do formato de redação, um texto de
+// g1.globo.com/pr/parana/especial-publicitario/<marca>/ virou a fonte (1) de um
+// post: o caminho não tinha nenhuma das palavras da lista, e o "especial"
+// publicitário é release de uma empresa com a marca do jornal em cima.
+const PATROCINADO = /\/(patrocinado|conteudo-patrocinado|publieditorial|publi|informe-publicitario|especial-publicitario|especiais?-publicitarios?|publicidade|branded|dino|parceiros?|estudio-[a-z]+|conteudo-de-marca|sponsored|partner-content|paid-post|advertorial)(\/|$)/i;
 
 export function confiavel(url, tecnicas = null) {
   const d = dominio(url);
@@ -173,7 +190,9 @@ export function empresasCitadas(texto, fontes = null) {
 const PODE_CITAR = /^(arxiv|gov|edu|usp|unicamp|ufrj|fgv|ibge|mit|stanford|nature|science|ieee|acm|oecd|europa|un|who|worldbank|imf|itu|nist|agenciabrasil|fapesp)$/i;
 // Pedaço de domínio que é palavra comum em português: "jornal.usp.br" não pode
 // acusar todo texto que diga "jornal"
-const NAO_E_NOME = /^(com|br|org|net|co|uk|www|news|noticias|mercados|blog|jornal|agencia|abril|revista|spectrum|cio)$/i;
+// "hardware" entrou aqui em 02/10 junto com hardware.com.br: sem isso, todo post
+// que escrevesse a palavra hardware seria acusado de citar o veículo e barrado.
+const NAO_E_NOME = /^(com|br|org|net|co|uk|www|news|noticias|mercados|blog|jornal|agencia|abril|revista|spectrum|cio|hardware)$/i;
 // Veículo com nome de palavra comum só conta com maiúscula no meio da frase: "o
 // Valor informou" é o jornal, "o valor do contrato" não é. No documento 9, "valor"
 // minúsculo foi acusado como veículo citado.
@@ -539,6 +558,33 @@ async function peneira(c, bing, google, artigos, feeds, { maxFontes, log, tecnic
 }
 
 // Links citados no texto que NÃO vieram da pesquisa: são inventados ou da memória do modelo.
+/* A apuração sem o que veio das fontes retiradas.
+   Achado na validação de 03/10: o Pesquisador lê as cinco fontes, escreve a
+   apuração citando todas, e só no fim marca duas como fora do tema. O sistema
+   tirava as duas da lista, mas a apuração seguia inteira para a mesa e para o
+   Diretor, com [f2] e [f4] dentro. O Diretor citou um código que não existia
+   mais, o fiscal apontou, e o documento foi barrado três correções depois.
+
+   Linha que só se apoia em fonte retirada sai inteira: um fato vindo de fonte
+   fora do tema não deve alimentar o texto. Linha que se apoia também em fonte
+   que ficou perde só o código retirado. A linha da marca FORA DO TEMA sai: ela
+   é recado para o sistema, não material para quem escreve. */
+export function semFontesRetiradas(apuracao, fora) {
+  const retiradas = new Set([...(fora || [])].map(String));
+  if (!retiradas.size) return String(apuracao);
+  return String(apuracao).split('\n').flatMap((linha) => {
+    if (/FORA DO TEMA/i.test(linha)) return [];
+    const citadas = [...linha.matchAll(/\bf\d+\b/g)].map((m) => m[0]);
+    if (citadas.length && citadas.every((c) => retiradas.has(c))) return [];
+    // dentro dos colchetes, inclusive em grupo: "[f2, f5]" vira "[f5]"
+    const limpa = linha.replace(/\[([^\]]*\bf\d+\b[^\]]*)\]/g, (bloco, dentro) => {
+      const ficam = (dentro.match(/\bf\d+\b/g) || []).filter((c) => !retiradas.has(c));
+      return ficam.length ? `[${ficam.join(', ')}]` : '';
+    }).replace(/ +([.,;:])/g, '$1');
+    return [limpa];
+  }).join('\n');
+}
+
 export function linksForaDaPesquisa(texto, fontes) {
   const permitidos = new Set(fontes.map((f) => f.url));
   return [...String(texto).matchAll(/\]\((https?:[^)\s]+)\)|(?<!\()\bhttps?:\/\/[^\s)>\]]+/g)]

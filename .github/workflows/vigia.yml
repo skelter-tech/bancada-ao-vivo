@@ -1,11 +1,21 @@
 name: Vigia da bancada
 
-# De meia em meia hora, confere se a bancada está trabalhando e religa o turno se
-# ela travou. O resultado de cada ronda vai para o Firestore e aparece no /admin/.
-# Existe para o escritório se cuidar sozinho com o PC do Rubens desligado.
+# Confere se a bancada está trabalhando e religa o turno se ela travou. O
+# resultado de cada ronda vai para o Firestore e aparece no /admin/. Existe para o
+# escritório se cuidar sozinho com o PC do Rubens desligado.
+#
+# Quatro agendas em vez de uma, e isto é medido: de 20/09 a 01/10 o '*/30' pediu
+# 48 rondas por dia e o GitHub entregou de 3 a 6, porque agenda de Actions é
+# melhor esforço e as nossas caem sempre na mesma hora cheia. Quatro pedidos por
+# meia hora, em minutos diferentes, sobem a chance de um deles passar. Ronda que
+# chega junto é descartada pelo grupo de concorrência, e cada uma custa 15
+# segundos num repositório público, onde minuto é de graça.
 on:
   schedule:
     - cron: '*/30 * * * *'
+    - cron: '7,37 * * * *'
+    - cron: '16,46 * * * *'
+    - cron: '23,53 * * * *'
   workflow_dispatch:
 
 permissions:

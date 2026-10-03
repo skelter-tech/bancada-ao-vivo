@@ -168,3 +168,65 @@ export function montaBancada({ tema, numero, titulares, especialistas, bancadas 
 
   return { agentes, mesa: naMesa, escolhidos };
 }
+
+/* ---------- o eco de abertura ----------
+   Achado da auditoria de leitura em 30/09, no documento 288: o texto trazia "No
+   Brasil, a instabilidade logística sobrecarrega..." e a fala de Pessoas abria
+   com "No Brasil, a instabilidade logística não é resolvida...". Duas pessoas
+   diferentes começando a frase igual não é mesa, é coro.
+
+   A trava de eco que já existia compara a fala com a APURAÇÃO, e por isso não
+   pega este caso: as duas falas podem estar longe do material e perto uma da
+   outra. Aqui a comparação é só da ABERTURA, que é onde a repetição aparece,
+   porque o modelo pega o gancho de quem falou antes e troca o fim da frase.
+
+   A medida: das quatro primeiras palavras de conteúdo, quantas são as mesmas. O
+   par real do 288 dá 0.75 (brasil, instabilidade, logistica em comum, e só o
+   verbo muda). Duas aberturas de assuntos diferentes não compartilham três
+   palavras de conteúdo em quatro por acaso. */
+const FUNCAO = new Set(['o', 'a', 'os', 'as', 'um', 'uma', 'de', 'do', 'da', 'dos', 'das', 'em', 'no', 'na', 'nos', 'nas',
+  'por', 'para', 'com', 'sem', 'que', 'e', 'ou', 'mas', 'se', 'ao', 'aos', 'as', 'eu', 'ele', 'ela', 'isso', 'esse', 'essa',
+  'este', 'esta', 'quando', 'onde', 'como', 'ja', 'nao', 'mais', 'menos', 'muito', 'todo', 'toda', 'aqui', 'la']);
+
+export const PALAVRAS_DA_ABERTURA = 4;
+export const ECO_ABERTURA = 0.6;
+
+export function abertura(fala, quantas = PALAVRAS_DA_ABERTURA) {
+  return String(fala).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/)
+    .filter((p) => p.length > 1 && !FUNCAO.has(p))
+    .slice(0, quantas);
+}
+
+/* Quem já abriu assim. Devolve o cargo de quem falou antes, ou null. */
+export function ecoDeAbertura(fala, mesa, limiar = ECO_ABERTURA) {
+  const nova = abertura(fala);
+  if (nova.length < PALAVRAS_DA_ABERTURA) return null;
+  for (const m of mesa || []) {
+    const velha = abertura(m.fala);
+    if (velha.length < PALAVRAS_DA_ABERTURA) continue;
+    const iguais = nova.filter((p) => velha.includes(p)).length;
+    if (iguais / nova.length >= limiar) return m.cargo || m.nome || 'alguém da mesa';
+  }
+  return null;
+}
+
+/* ---------- o que a mesa já disse, em resumo ----------
+   Pedido da auditoria em 30/09: cada um recebia o texto LITERAL de quem falou
+   antes, e texto literal na frente do modelo vira matéria-prima de paráfrase.
+   Com o resumo ele tem a posição e não tem a frase, então precisa escrever a
+   dele.
+
+   Resumo por código, sem chamada de modelo: a primeira frase de cada fala, que é
+   onde o profissional põe a posição. Corta no ponto, e no tamanho se a frase for
+   longa. Economiza também o pedido: a mesa inteira cabia em 700 letras por voz e
+   agora cabe em 170. */
+export const LETRAS_DO_RESUMO = 170;
+
+export function resumoDaMesa(mesa, letras = LETRAS_DO_RESUMO) {
+  return (mesa || []).map((m) => {
+    const primeira = String(m.fala).split(/(?<=[.!?])\s+/)[0] || String(m.fala);
+    const curta = primeira.length > letras ? `${primeira.slice(0, letras).replace(/\s+\S*$/, '')}...` : primeira;
+    return `**${m.cargo}:** ${curta}`;
+  }).join('\n');
+}

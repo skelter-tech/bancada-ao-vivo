@@ -103,6 +103,92 @@ export function pareceIngles(texto) {
   return achadas / palavras > 0.06;
 }
 
+/* ---------- fecho que não responde ----------
+   Achado da auditoria de leitura em 30/09: no documento 288 a Leitora perguntou
+   "qual alavanca eu puxo quando a ruptura bater a meta?" e o texto terminou
+   devolvendo a mesma pergunta ao leitor. Pergunta no fim é boa para comentário,
+   mas ela não pode OCUPAR o lugar da resposta: quem leu até ali ficou sem nada
+   para fazer na segunda-feira.
+
+   A regra, e ela é de uma coisa só: o fecho tem que ter uma REGRA DE DECISÃO
+   (uma condição e o que fazer sob ela) ou dizer EXPLICITAMENTE o que ficou sem
+   resposta e por quê. Qualquer uma das duas serve, e as duas são frases que o
+   código reconhece pela marca.
+
+   Heurística, e assumida como tal: ela não entende o argumento, procura a marca
+   da condição e a marca da pendência. Por isso não barra publicação, só pede
+   correção: errar pedindo conserto custa uma rodada; errar barrando joga fora um
+   documento bom. */
+// os imperativos que fecham um post de ofício. Lista, e não regra de
+// morfologia: "renegocie" e "centralize" terminam como substantivo, e inventar
+// detector de imperativo em português daria mais erro que a lista.
+const ACAO = '(fa[çc]a|prefira|troque|comece|exija|pare|mude|invista|segure|puxe|priorize|escolha|mantenha|corte|pe[çc]a|negocie|renegocie|me[çc]a|ajuste|reduza|aumente|reveja|revise|documente|automatize|centralize|distribua|contrate|treine|pague|cobre|trave|libere|mova|migre|teste|adote|amarre|separe|junte|publique|avise|espere|aceite|recuse|assuma|proteja|monitore|limite|defina|escreva|calcule|conte)';
+const REGRA_DE_DECISAO = new RegExp([
+  // condição explícita seguida do que fazer
+  `se\\b[^.!?\\n]{5,120}\\b(ent[ãa]o|,\\s*${ACAO})`,
+  `quando\\b[^.!?\\n]{5,100}\\b${ACAO}`,
+  `enquanto\\b[^.!?\\n]{5,80}\\b(${ACAO}|n[ãa]o)`,
+  // limite numérico ou de tamanho, que é a forma que o ofício mais usa
+  `(acima|abaixo) de[^.!?\\n]{0,60}\\b(${ACAO}|passa a|vale|compensa|j[áa] n[ãa]o|n[ãa]o vale|n[ãa]o compensa)`,
+  `at[ée]\\b[^.!?\\n]{0,40}\\b(${ACAO}|vale)`,
+  // a regra dita como regra
+  'a regra (é|e|pr[áa]tica)', 'o crit[ée]rio (é|e)', 'comece (por|pelo|pela)\\b', 'primeiro[^.!?\\n]{0,40}\\bdepois\\b',
+].join('|'), 'i');
+/* A pendência declarada. A primeira versão desta lista apontou 190 de 325 posts
+   reais, e a amostra mostrou que a lista estava estreita, não que os posts
+   estavam ruins: "Não definimos um modelo universal", "Ainda não ficou definido
+   como", "A mesa não definiu um modelo padrão" são exatamente a declaração que a
+   regra pede, e nenhuma casava. Medido de novo depois de ampliar. */
+const PENDENCIA_DECLARADA = new RegExp([
+  'ficou sem resposta', 'fica sem resposta', 'fica em aberto', 'segue em aberto', 'permanece em aberto',
+  'n[ãa]o (temos|h[áa]|existe|existem) (dado|dados|n[úu]mero|n[úu]meros|evid[êe]ncia|resposta|consenso|m[ée]trica)',
+  'n[ãa]o (definimos|definiu|definiram|chegamos|chegou|fechou|fecharam|resolveu|resolvemos|mediu|medimos|sabemos|se sabe|est[áa] (claro|medido|definido|respondido))',
+  '(ainda )?n[ãa]o (ficou|est[áa]) (claro|definido|medido|respondido|fechado)',
+  'ningu[ée]m (mediu|sabe|soube|respondeu)', 'falta (medir|dado|evid[êe]ncia|n[úu]mero)',
+  'sem (dado|evid[êe]ncia|n[úu]mero) (p[úu]blico|para|que)', 'sem consenso',
+  'a pergunta que (fica|segue|sobra)', 'o que (ficou|fica) sem resposta', 'n[ãa]o h[áa] resposta (única|unica|pronta|fechada)',
+  'depende do (contexto|caso|setor|tamanho)', 'varia (muito )?(com|conforme|de acordo)',
+].join('|'), 'i');
+
+/* O fim do post: as últimas linhas, que é onde o fecho vive. Sem contar a linha
+   de hashtags, que não é texto. */
+export function fechamentoSemSaida(post, letras = 700) {
+  const limpo = String(post).replace(/\n#[\p{L}\p{N}_\s#]+$/u, '').trim();
+  const fim = limpo.slice(-letras);
+  return !REGRA_DE_DECISAO.test(fim) && !PENDENCIA_DECLARADA.test(fim);
+}
+
+/* ---------- testemunho que ninguém viveu ----------
+   Achado da auditoria de leitura em 30/09: o documento 288 abriu com "Vi a
+   promessa de entrega em 48 horas derrubar o estoque de segurança", e quem
+   escreveu aquilo não tem operação, não tem cliente e não tem passado. É a pior
+   mentira possível neste projeto, porque é a única que o leitor não tem como
+   conferir: número sem fonte o fiscal pega, testemunho inventado não deixa
+   rastro.
+
+   A trava vale para o TEXTO PUBLICADO, não para a mesa. Na mesa os especialistas
+   falam da prática deles de propósito, e é disso que o formato vive; o que não
+   pode é a primeira pessoa daquela conversa atravessar para o post, que é
+   assinado pela casa e lido por quem não assistiu à discussão.
+
+   Caso ilustrativo continua permitido, marcado como hipótese ("imagine uma
+   operação em que..."), e por isso a marca de hipótese na mesma frase desarma a
+   trava. */
+const PRIMEIRA_PESSOA = /\b(eu (vi|vivi|presenciei|acompanhei|atendi|trabalhei|passei por|peguei)|j[áa] (vi|vivi|presenciei|peguei|atendi)|vi (isso|essa|esse|aquilo|a |o |um |uma )|na minha (empresa|opera[çc][ãa]o|equipe|[áa]rea|experi[êe]ncia)|no meu (time|cliente|setor|trabalho)|num cliente que (eu )?atend|cliente meu|me aconteceu|aconteceu comigo|na (empresa|opera[çc][ãa]o|companhia) (em que|onde) (eu )?(trabalh|estav|atuav))/gi;
+const HIPOTESE = /\b(imagine|suponha|digamos|hipot[ée]tic|por hip[óo]tese|pense n[ao])\b/i;
+
+export function experienciaPessoal(texto) {
+  const achados = [];
+  for (const m of String(texto).matchAll(PRIMEIRA_PESSOA)) {
+    // a frase inteira em volta: hipótese marcada no começo dela desarma a trava
+    const inicio = String(texto).lastIndexOf('.', m.index) + 1;
+    const fim = String(texto).indexOf('.', m.index);
+    const frase = String(texto).slice(inicio, fim === -1 ? undefined : fim);
+    if (!HIPOTESE.test(frase)) achados.push(m[0].trim());
+  }
+  return [...new Set(achados)];
+}
+
 /* ---------- a cena da imagem ----------
    Pedido do Rubens em 24/09: "todo prompt tem alguma coisa de data center, está
    ficando repetitivo". A causa era o Designer receber só o texto do post, sem a

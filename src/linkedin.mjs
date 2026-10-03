@@ -1,6 +1,8 @@
 /* O post como o LinkedIn entende. Ele não lê markdown: negrito vira asterisco na
    tela e título vira cerquilha. O código tira a marcação e troca [f2] por (1), (2),
    na ordem em que as fontes aparecem no texto; os links vão no primeiro comentário. */
+import { hashtagComAcento } from './acentos.mjs';
+
 export function paraLinkedin(doc, fontes) {
   const semTitulo = String(doc).replace(/^\s*#\s+.+\n?/, '').trim()
     // "[f2, f5]" vira "[f2][f5]": agrupado, o código escapava da troca e aparecia
@@ -19,6 +21,10 @@ export function paraLinkedin(doc, fontes) {
     .replace(/(• [^\n]+)\n(?=[^•\n])/g, '$1\n\n')
     // a linha de hashtags fica separada do fecho
     .replace(/([^\n])\n(?=#[\p{L}\p{N}_]+(?:\s+#[\p{L}\p{N}_]+)*\s*$)/u, '$1\n\n')
+    // e ganha o acento que o modelo come: "#gestaodeestoque" saiu assim no
+    // documento 288, e dentro de uma hashtag composta nenhuma regra de sufixo
+    // casa, então quem resolve é a busca por palavra do dicionário
+    .replace(/#[\p{L}\p{N}_]+/gu, (tag) => hashtagComAcento(tag))
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
     .replace(/ +([.,;:])/g, '$1')
     // tipografia: em português é "90%", e o hífen inseparável (U+2011) que o modelo

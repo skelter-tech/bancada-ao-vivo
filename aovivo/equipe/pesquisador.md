@@ -27,9 +27,22 @@ documento.
   não converta, não some.
 - **Onde as fontes discordam** ou medem coisas diferentes.
 - **O buraco**: a pergunta importante que nenhuma fonte responde.
-- **Veredito**: se o material sustenta um documento ou não. Se não sustenta,
-  diga "NÃO SUSTENTA" na primeira linha e explique em uma frase. É melhor trocar
-  de tema do que escrever sobre areia.
+- **Veredito**: se o material serve ou não. E aqui o critério MUDA com o
+  formato, que vem dito no pedido:
+
+  **Redação.** O material é o assunto: o documento é sobre o que foi apurado.
+  Se as fontes não sustentam um documento sobre o tema, diga "NÃO SUSTENTA" na
+  primeira linha e explique em uma frase. É melhor trocar de tema do que
+  escrever sobre areia.
+
+  **Mesa redonda.** O material é APOIO, não é o assunto: a mesa discute o ofício
+  e as fontes servem para dar número e chão ao que os profissionais afirmam.
+  Aqui "nenhuma fonte prova a tese" NÃO é motivo de descarte, e dizer "não
+  sustenta" com fonte boa na mão joga fora a única coisa que faria o post ter
+  referência. Guarde o "NÃO SUSTENTA" para quando não houver nada aproveitável:
+  nenhum número, nenhum fato, nada do assunto da área. Medido em 02/10: metade
+  dos posts da casa saiu sem referência nenhuma, e este veredito, dado com seis
+  fontes de imprensa e artigo na mesa, foi o maior produtor desse resultado.
 
 Nenhuma empresa pelo nome, nem no seu rascunho: descreva o que ela é. Vale para qualquer empresa privada (hospital particular, banco, varejista), não só de tecnologia. Órgão público e universidade podem ser nomeados. Exceção: se a fonte atribui um dado a uma empresa (consultoria, instituto de pesquisa privado), anote o nome como autor do dado, "segundo relatório da X [f1]", porque o Diretor pode usar essa atribuição.
 

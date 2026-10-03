@@ -39,7 +39,9 @@ export function marcasDoFiscal(x) {
     ...(x.numeros?.length ? ['numero_sem_fonte'] : []),
     ...(x.codigos?.length ? ['codigo_inexistente'] : []),
     ...(x.ingles ? ['ingles'] : []),
-    ...(x.usadas < 3 ? ['poucas_fontes'] : []),
+    ...(x.testemunho?.length ? ['testemunho'] : []),
+    // o mínimo depende do formato desde 03/10 (três na redação, até dois na mesa)
+    ...(x.usadas < (x.minimo ?? 3) ? ['poucas_fontes'] : []),
     ...(x.tamanho > 2800 ? ['tamanho'] : []),
   ];
 }

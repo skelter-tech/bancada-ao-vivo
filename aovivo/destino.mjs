@@ -50,6 +50,18 @@ export function destinoFirestore(conta) {
     async temasRecentes(n = 40) {
       return (await db.listaPorNumero('documentos', n)).map((d) => d.tema).reverse();
     },
+    /* A memória de temas, do índice e não dos documentos. Pedido da auditoria de
+       leitura em 30/09: 287 documentos em 12 dias com repetição dentro da mesma
+       área ("treinar ou contratar" sete vezes em Carreira). Para enxergar isso é
+       preciso tema COM área e COM data, e uma janela de um mês.
+
+       Pelos documentos seriam 900 leituras a cada documento, umas 26 mil por dia,
+       metade da cota gratuita do Firestore. O índice tem as 1.500 últimas
+       entradas num documento só: 1 leitura. */
+    async memoriaDeTemas() {
+      const i = await db.le('indice/documentos').catch(() => null);
+      return (i?.itens || []).map(({ tema, titulo, categoria, data }) => ({ tema, titulo, categoria, data }));
+    },
     // os prompts de imagem recentes, para o Designer não repetir a cena
     async cenasRecentes(n = 20) {
       return (await db.listaPorNumero('documentos', n)).map((d) => d.imagem).filter(Boolean);
@@ -101,6 +113,9 @@ export function destinoArquivo(raiz) {
     documento: (doc) => pub.grava(doc, 'documentos'),
     documentoPrivado: (doc) => priv.grava(doc, 'privados'),
     async temasRecentes(n = 40) { return (await le('documentos.json', [])).slice(-n).map((d) => d.tema); },
+    async memoriaDeTemas() {
+      return (await le('documentos.json', [])).reverse().map(({ tema, titulo, categoria, data }) => ({ tema, titulo, categoria, data }));
+    },
     // o índice local não guarda o prompt da imagem: no teste sem internet o
     // Designer trabalha sem a lista de cenas, e isso não muda o caminho do código
     async cenasRecentes() { return []; },

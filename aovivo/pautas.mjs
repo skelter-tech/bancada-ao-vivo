@@ -67,6 +67,24 @@ export function limpaConsulta(q) {
    caminhos diferentes, e na segunda-feira isso vira cinco documentos iguais. */
 export const LIMIAR = 0.45;
 
+/* O limiar de DENTRO DA MESMA ÁREA, medido em 02/10 contra o índice real de 330
+   documentos, depois de a auditoria de leitura apontar repetição.
+
+   A medida: 33 pares que a leitora chamou de repetidos deram de 0.00 a 0.30
+   (mediana 0.13), e 3.934 pares da mesma área que são temas diferentes deram até
+   0.444. Os dois grupos se sobrepõem inteiros, então NÃO existe limiar que pegue
+   o que ela viu: "contratar especialista externo" e "financiar requalificação
+   interna" são o mesmo dilema escrito com outras palavras, e semelhança de
+   palavra não enxerga isso. Baixar para 0.25 pegaria 4 dos 33 e barraria 71
+   pares bons.
+
+   O que a medida mostra que DÁ para fazer: 0.40 dentro da área pega os quatro
+   piores pares, que são repetição de verdade ("energia renovável em data
+   centers" nos documentos 48 e 148, "resfriamento líquido" no 60 e no 112), ao
+   custo de 4 pares bons em 3.934, 0,1%. Fora da área continua 0.45, porque
+   assunto que volta em outra mesa é outro ângulo por construção. */
+export const LIMIAR_AREA = 0.40;
+
 /* O parecido() da casa compara palavras inteiras e não sabe de plural: medido em
    27/09, "detecção de fraudes em pagamentos digitais" contra "detecção de fraude
    em pagamento digital" dá 0.143 e passa limpo por uma trava de 0.45. São o mesmo
